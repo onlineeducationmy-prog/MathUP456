@@ -1,0 +1,3189 @@
+<!DOCTYPE html>
+<html lang="ms">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sistem Penjana Soalan Ujian Prestasi KSSR</title>
+  <!-- Tailwind CSS untuk antaramuka kawalan moden & responsif -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- html2pdf.js untuk eksport terus fail PDF Kertas Soalan & Skema Jawapan -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+  <!-- Google Fonts: Inter untuk UI & Tinos (serasi Times New Roman) untuk kertas peperiksaan -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Tinos:ital,wght@0,400;0,700;1,400;1,700&display=swap" rel="stylesheet" />
+
+  <style>
+    /* ==========================================================================
+       GAYA ASAS & TIPOGRAFI KERTAS PEPERIKSAAN SEBENAR (A4 STANDARD KSSR)
+       ========================================================================== */
+    :root {
+      --paper-width: 210mm;
+      --paper-height: 296.5mm; /* Mengelakkan limpahan halaman kosong semasa eksport PDF */
+    }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background-color: #cbd5e1;
+      color: #0f172a;
+      margin: 0;
+      padding: 0;
+    }
+
+    /* Tipografi rasmi kertas peperiksaan Malaysia */
+    .exam-font {
+      font-family: 'Tinos', 'Times New Roman', Times, Georgia, serif;
+      color: #000000;
+      line-height: 1.4;
+    }
+
+    /* Pecahan bertingkat (Stacked Fractions) yang kemas untuk cetakan */
+    .frac {
+      display: inline-flex;
+      flex-direction: column;
+      vertical-align: middle;
+      text-align: center;
+      font-size: 0.88em;
+      line-height: 1.05;
+      margin: 0 2px;
+    }
+    .frac .num {
+      border-bottom: 1.2px solid currentColor;
+      padding: 0 3px 1px 3px;
+    }
+    .frac .den {
+      padding: 1px 3px 0 3px;
+    }
+
+    /* Lembaran Kertas A4 (Paparan Skrin) */
+    .a4-sheet {
+      width: var(--paper-width);
+      height: var(--paper-height);
+      background: #ffffff;
+      box-shadow: 0 12px 32px rgba(15, 23, 42, 0.22);
+      margin: 0 auto 24px auto;
+      padding: 12mm 17mm 11mm 17mm;
+      box-sizing: border-box;
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      overflow: hidden;
+      page-break-after: always;
+      break-after: page;
+    }
+
+    .a4-sheet:last-child {
+      page-break-after: auto;
+      break-after: auto;
+    }
+
+    /* Halaman Skema Jawapan di Akhir Muka Surat */
+    .scheme-sheet {
+      width: var(--paper-width);
+      min-height: var(--paper-height);
+      background: #ffffff;
+      box-shadow: 0 12px 32px rgba(15, 23, 42, 0.22);
+      margin: 0 auto 24px auto;
+      padding: 13mm 17mm 12mm 17mm;
+      box-sizing: border-box;
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      page-break-before: always;
+      break-before: page;
+      page-break-after: always;
+      break-after: page;
+    }
+
+    .scheme-sheet:last-child {
+      page-break-after: auto;
+      break-after: auto;
+    }
+
+    /* Kotak petak kosong & kotak susunan nombor */
+    .blank-box {
+      display: inline-block;
+      width: 56px;
+      height: 23px;
+      border: 1.5px solid #000;
+      vertical-align: middle;
+      margin: 0 4px;
+    }
+
+    .order-box {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 112px;
+      height: 28px;
+      border: 1.4px solid #000;
+      padding: 2px 10px;
+      font-weight: 700;
+      font-size: 11.5pt;
+    }
+
+    .answer-order-box {
+      display: inline-block;
+      width: 112px;
+      height: 30px;
+      border: 1.4px solid #000;
+      background: #fff;
+    }
+
+    /* Garis jawapan bertitik gaya kertas peperiksaan */
+    .dotted-line {
+      display: inline-block;
+      border-bottom: 1.3px dotted #000;
+      min-width: 155px;
+      height: 16px;
+    }
+
+    /* Jadual rasmi peperiksaan */
+    .exam-table {
+      border-collapse: collapse;
+      margin: 5px auto;
+    }
+    .exam-table th,
+    .exam-table td {
+      border: 1.4px solid #000000;
+      padding: 4px 12px;
+      text-align: center;
+      font-size: 11pt;
+    }
+
+    /* ==========================================================================
+       ATURAN CETAKAN RASMI (@media print)
+       ========================================================================== */
+    @media print {
+      @page {
+        size: A4 portrait;
+        margin: 0;
+      }
+
+      body {
+        background: #ffffff !important;
+        margin: 0 !important;
+        padding: 0 !important;
+      }
+
+      .no-print {
+        display: none !important;
+      }
+
+      #preview-viewport {
+        padding: 0 !important;
+        margin: 0 !important;
+        overflow: visible !important;
+        display: block !important;
+      }
+
+      #paper-scale-wrapper {
+        transform: none !important;
+        width: 100% !important;
+        height: auto !important;
+        margin: 0 !important;
+      }
+
+      .a4-sheet {
+        box-shadow: none !important;
+        margin: 0 !important;
+        width: 210mm !important;
+        height: 297mm !important;
+        page-break-after: always !important;
+        break-after: page !important;
+      }
+
+      .scheme-sheet {
+        box-shadow: none !important;
+        margin: 0 !important;
+        width: 210mm !important;
+        min-height: 297mm !important;
+        page-break-before: always !important;
+        break-before: page !important;
+        page-break-after: always !important;
+        break-after: page !important;
+      }
+
+      .scheme-sheet:last-child {
+        page-break-after: auto !important;
+        break-after: auto !important;
+      }
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col">
+
+  <!-- ==========================================================================
+       BAR KAWALAN UTAMA GURU (TIDAK DICETAK)
+       ========================================================================== -->
+  <header class="no-print sticky top-0 z-40 bg-slate-900 text-white shadow-xl border-b border-slate-700">
+    <div class="max-w-7xl mx-auto px-3 sm:px-6 py-3">
+      <!-- Baris Atas: Jenama Sistem & Lencana Kawalan Kualiti -->
+      <div class="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-800">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow-md shrink-0">
+            <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+          </div>
+          <div>
+            <div class="flex items-center gap-2">
+              <h1 class="text-base sm:text-lg font-bold tracking-tight text-white">Penjana Kertas Ujian Prestasi KSSR</h1>
+              <span id="set-badge" class="px-2.5 py-0.5 text-xs font-bold rounded-full bg-blue-500/20 text-blue-300 border border-blue-400/30">
+                SET #1
+              </span>
+            </div>
+            <p class="text-xs text-slate-400">Soalan (Hal. 1–9) + Jawapan &amp; Langkah Pengiraan Terus di Akhir Muka Surat (Hal. 10–11)</p>
+          </div>
+        </div>
+
+        <!-- Penunjuk Kawalan Kualiti Automatik -->
+        <div id="qc-status-pill" class="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-emerald-950/80 border border-emerald-500/40 text-emerald-300 text-xs font-medium">
+          <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+          <span id="qc-status-text">Kawalan Kualiti Lulus: 50/50 Markah • Jawapan Disertakan di Akhir</span>
+        </div>
+      </div>
+
+      <!-- Baris Kawalan & Butang Tindakan -->
+      <div class="pt-3 flex flex-wrap items-center justify-between gap-3">
+        <!-- Pilihan Mata Pelajaran & Tahun -->
+        <div class="flex flex-wrap items-center gap-2 sm:gap-3">
+          <div class="flex flex-col">
+            <label for="select-subject" class="text-[10px] uppercase tracking-wider text-slate-400 font-semibold mb-0.5">Mata Pelajaran &amp; Fokus</label>
+            <select id="select-subject" class="bg-slate-800 border border-slate-700 text-white text-xs sm:text-sm rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:outline-none">
+              <option value="MATEMATIK_CAMPURAN" selected>Matematik KSSR (Corak Pelbagai Bidang)</option>
+              <option value="MATEMATIK_NOMBOR">Matematik KSSR (Nombor, Pecahan &amp; Wang)</option>
+              <option value="MATEMATIK_SUKATAN_DATA">Matematik KSSR (Sukatan, Ruang &amp; Data)</option>
+            </select>
+          </div>
+
+          <div class="flex flex-col">
+            <label for="select-year" class="text-[10px] uppercase tracking-wider text-slate-400 font-semibold mb-0.5">Tahun / Tahap</label>
+            <select id="select-year" class="bg-slate-800 border border-slate-700 text-white text-xs sm:text-sm rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:outline-none">
+              <option value="6" selected>Tahun 6 (KSSR Semakan)</option>
+              <option value="5">Tahun 5 (KSSR Semakan)</option>
+              <option value="4">Tahun 4 (KSSR Semakan)</option>
+            </select>
+          </div>
+
+          <!-- Butang Generate Soalan / Set Baharu -->
+          <div class="flex items-end gap-2 pt-3 sm:pt-4">
+            <button id="btn-generate" type="button" class="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white text-xs sm:text-sm font-semibold shadow-md transition cursor-pointer">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+              </svg>
+              <span>GENERATE SOALAN</span>
+            </button>
+
+            <button id="btn-new-set" type="button" class="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white text-xs sm:text-sm font-semibold shadow-md transition cursor-pointer">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+              <span>GENERATE SET BAHARU</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Butang Papar Skema, Download PDF & Print -->
+        <div class="flex flex-wrap items-center gap-2 pt-1 sm:pt-4">
+          <button id="btn-jump-scheme" type="button" class="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs sm:text-sm font-bold shadow-md transition cursor-pointer">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+            </svg>
+            <span id="btn-scheme-label">PAPAR SKEMA JAWAPAN</span>
+          </button>
+
+          <!-- Menu Muat Turun PDF (Lengkap atau Berasingan) -->
+          <div class="relative inline-block" id="pdf-dropdown-container">
+            <button id="btn-download-pdf" type="button" class="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs sm:text-sm font-semibold shadow-md transition cursor-pointer">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              <span>DOWNLOAD PDF</span>
+              <svg class="w-3.5 h-3.5 ml-0.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+
+            <div id="pdf-dropdown-menu" class="hidden absolute right-0 mt-2 w-72 rounded-xl bg-white text-slate-800 shadow-2xl border border-slate-200 py-1.5 z-50">
+              <div class="px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-400 border-b border-slate-100">
+                Pilihan Muat Turun PDF A4
+              </div>
+              <button id="dl-full-pdf" type="button" class="w-full text-left px-3.5 py-2.5 text-xs sm:text-sm hover:bg-indigo-50 flex items-center gap-2.5 font-medium text-slate-700 cursor-pointer">
+                <span class="w-7 h-7 rounded-lg bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-xs">11p</span>
+                <div>
+                  <div class="font-semibold text-slate-900">PDF Lengkap (Soalan + Jawapan)</div>
+                  <div class="text-[11px] text-slate-500">Kertas soalan &amp; skema di akhir muka surat</div>
+                </div>
+              </button>
+              <button id="dl-paper-pdf" type="button" class="w-full text-left px-3.5 py-2.5 text-xs sm:text-sm hover:bg-blue-50 flex items-center gap-2.5 font-medium text-slate-700 cursor-pointer border-t border-slate-100">
+                <span class="w-7 h-7 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-xs">9p</span>
+                <div>
+                  <div class="font-semibold text-slate-900">PDF Kertas Soalan Sahaja</div>
+                  <div class="text-[11px] text-slate-500">9 halaman untuk edaran murid</div>
+                </div>
+              </button>
+              <button id="dl-scheme-pdf" type="button" class="w-full text-left px-3.5 py-2.5 text-xs sm:text-sm hover:bg-emerald-50 flex items-center gap-2.5 font-medium text-slate-700 cursor-pointer border-t border-slate-100">
+                <span class="w-7 h-7 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold text-xs">SJ</span>
+                <div>
+                  <div class="font-semibold text-slate-900">PDF Skema Jawapan Sahaja</div>
+                  <div class="text-[11px] text-slate-500">Jawapan tepat &amp; langkah pengiraan</div>
+                </div>
+              </button>
+            </div>
+          </div>
+
+          <button id="btn-print" type="button" class="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-white text-xs sm:text-sm font-semibold border border-slate-600 shadow-md transition cursor-pointer">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+            </svg>
+            <span>PRINT</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bar Info Sekunder & Kawalan Zum Paparan A4 -->
+    <div class="bg-slate-800/90 border-t border-slate-700/80 px-3 sm:px-6 py-1.5 text-xs text-slate-300">
+      <div class="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-2">
+        <div class="flex flex-wrap items-center gap-2">
+          <span id="view-mode-indicator" class="font-semibold text-blue-300">Paparan: Kertas Soalan (Hal. 1–9) &amp; Skema Jawapan Lengkap di Akhir (Hal. 10–11)</span>
+          <span class="text-slate-500">|</span>
+          <span id="syllabus-info" class="text-slate-300">Corak Aktif: Pelbagai Bidang KSSR</span>
+        </div>
+
+        <div class="flex items-center gap-1.5">
+          <span class="text-slate-400 mr-1">Zum Paparan:</span>
+          <button id="zoom-out" type="button" class="px-2 py-0.5 rounded bg-slate-700 hover:bg-slate-600 text-white font-bold cursor-pointer">-</button>
+          <span id="zoom-label" class="px-2 py-0.5 rounded bg-slate-900 text-slate-200 font-mono min-w-[52px] text-center">100%</span>
+          <button id="zoom-in" type="button" class="px-2 py-0.5 rounded bg-slate-700 hover:bg-slate-600 text-white font-bold cursor-pointer">+</button>
+          <button id="zoom-fit" type="button" class="px-2 py-0.5 rounded bg-slate-700 hover:bg-slate-600 text-slate-200 ml-1 cursor-pointer">Muat Skrin</button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- ==========================================================================
+       NOTIFIKASI TOAST (PENGGANTI ALERT)
+       ========================================================================== -->
+  <div id="toast-container" class="no-print fixed bottom-5 right-5 z-50 flex flex-col gap-2 pointer-events-none"></div>
+
+  <!-- ==========================================================================
+       RUANG PAPARAN KERTAS PEPERIKSAAN & JAWAPAN DI AKHIR MUKA SURAT (A4)
+       ========================================================================== -->
+  <main id="preview-viewport" class="flex-1 py-6 px-2 sm:px-6 overflow-x-hidden flex flex-col items-center">
+    <div id="paper-scale-wrapper" style="transform-origin: top center; transition: transform 0.15s ease;">
+      <div id="full-document-container" class="exam-font">
+        <!-- Kertas Soalan (Halaman 1 hingga 9) -->
+        <div id="exam-paper-container"></div>
+
+        <!-- Penanda Pemisah Visual pada Skrin (Tidak Dicetak) -->
+        <div id="scheme-anchor" class="no-print my-6 mx-auto w-[210mm] flex items-center justify-between px-4 py-2.5 rounded-xl bg-amber-100 border-2 border-amber-400 text-amber-950 shadow-sm">
+          <div class="flex items-center gap-2 text-xs sm:text-sm font-bold">
+            <span>LAMPIRAN AKHIR MUKA SURAT: SKEMA JAWAPAN &amp; LANGKAH PENGIRAAN LENGKAP</span>
+          </div>
+          <button type="button" onclick="window.scrollTo({top: 0, behavior: 'smooth'})" class="text-xs font-bold underline hover:text-amber-700 cursor-pointer">
+            Kembali ke Muka Depan &uarr;
+          </button>
+        </div>
+
+        <!-- Skema Jawapan & Langkah Pengiraan Lengkap di Akhir Muka Surat (Halaman 10 & 11) -->
+        <div id="answer-scheme-container"></div>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    /**
+     * ==========================================================================
+     * MODUL UTILITI MATEMATIK, PENUKAR PERKATAAN & PEMBINA RAJAH SVG KSSR
+     * ==========================================================================
+     */
+    const AppState = {
+      setCounter: 0,
+      subject: 'MATEMATIK_CAMPURAN',
+      year: 6,
+      zoomLevel: 1,
+      currentExamData: null,
+      lastPatterns: {}
+    };
+
+    function randItem(arr) {
+      return arr[Math.floor(Math.random() * arr.length)];
+    }
+
+    function shuffleArray(arr) {
+      const copy = [...arr];
+      for (let i = copy.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [copy[i], copy[j]] = [copy[j], copy[i]];
+      }
+      return copy;
+    }
+
+    // Memilih indeks corak yang BERBEZA daripada corak set sebelumnya untuk slot soalan yang sama
+    function pickNextPatternIndex(slotKey, totalPatterns, preferredIndices = null) {
+      const prev = AppState.lastPatterns[slotKey];
+      let pool = preferredIndices && preferredIndices.length > 0
+        ? preferredIndices.filter(i => i >= 0 && i < totalPatterns)
+        : Array.from({ length: totalPatterns }, (_, i) => i);
+
+      if (pool.length > 1 && prev !== undefined) {
+        const filtered = pool.filter(i => i !== prev);
+        if (filtered.length > 0) pool = filtered;
+      }
+      const chosen = randItem(pool);
+      AppState.lastPatterns[slotKey] = chosen;
+      return chosen;
+    }
+
+    // Format nombor bulat mengikut piawai KSSR Malaysia (jarak setiap 3 digit dari kanan)
+    function formatWhole(num) {
+      const n = Math.round(num);
+      return n.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+    }
+
+    // Format perpuluhan tanpa sifar tidak perlu di hujung
+    function formatDecimal(num) {
+      const rounded = Math.round(num * 1000000) / 1000000;
+      return rounded.toString();
+    }
+
+    // Format Ringgit Malaysia (RM) tepat kepada 2 tempat perpuluhan
+    function formatRM(amount) {
+      const val = Math.round(amount * 100) / 100;
+      const [whole, dec] = val.toFixed(2).split('.');
+      return `RM ${whole.replace(/\B(?=(\d{3})+(?!\d))/g, ' ')}.${dec}`;
+    }
+
+    // Faktor Sepunya Terbesar (FSTB / GCD)
+    function gcd(a, b) {
+      a = Math.abs(Math.round(a));
+      b = Math.abs(Math.round(b));
+      while (b !== 0) {
+        const t = b;
+        b = a % b;
+        a = t;
+      }
+      return a;
+    }
+
+    function fracHTML(num, den) {
+      return `<span class="frac"><span class="num">${num}</span><span class="den">${den}</span></span>`;
+    }
+
+    function mixedFracHTML(whole, num, den) {
+      if (num === 0) return `${whole}`;
+      if (whole === 0) return fracHTML(num, den);
+      return `${whole}${fracHTML(num, den)}`;
+    }
+
+    /**
+     * Penukar Nombor Bulat kepada Perkataan Bahasa Melayu (Tepat & Gramatis KSSR)
+     */
+    function nomborKePerkataan(n) {
+      if (n === 0) return 'sifar';
+      const asas = ['', 'satu', 'dua', 'tiga', 'empat', 'lima', 'enam', 'tujuh', 'lapan', 'sembilan'];
+
+      function ratusKePerkataan(num) {
+        let bahagian = [];
+        const ratus = Math.floor(num / 100);
+        const baki = num % 100;
+
+        if (ratus > 0) bahagian.push(asas[ratus] + ' ratus');
+
+        if (baki > 0) {
+          if (baki < 10) bahagian.push(asas[baki]);
+          else if (baki === 10) bahagian.push('sepuluh');
+          else if (baki === 11) bahagian.push('sebelas');
+          else if (baki < 20) bahagian.push(asas[baki % 10] + ' belas');
+          else {
+            const puluh = Math.floor(baki / 10);
+            const sa = baki % 10;
+            bahagian.push(asas[puluh] + ' puluh');
+            if (sa > 0) bahagian.push(asas[sa]);
+          }
+        }
+        return bahagian.join(' ');
+      }
+
+      let hasil = [];
+      const juta = Math.floor(n / 1000000);
+      const ribu = Math.floor((n % 1000000) / 1000);
+      const sa = n % 1000;
+
+      if (juta > 0) hasil.push(ratusKePerkataan(juta) + ' juta');
+      if (ribu > 0) hasil.push(ratusKePerkataan(ribu) + ' ribu');
+      if (sa > 0) hasil.push(ratusKePerkataan(sa));
+
+      return hasil.join(' ').trim();
+    }
+
+    function perpuluhanKePerkataan(decStr, unitLabel) {
+      const digitMap = {
+        '0': 'sifar', '1': 'satu', '2': 'dua', '3': 'tiga', '4': 'empat',
+        '5': 'lima', '6': 'enam', '7': 'tujuh', '8': 'lapan', '9': 'sembilan'
+      };
+      const [intPart, fracPart] = decStr.split('.');
+      const intWord = nomborKePerkataan(parseInt(intPart, 10));
+      const fracWords = fracPart.split('').map(d => digitMap[d]).join(' ');
+      const ayat = `${intWord} perpuluhan ${fracWords} ${unitLabel}`;
+      return ayat.charAt(0).toUpperCase() + ayat.slice(1);
+    }
+
+    /**
+     * Pembina Carta Pai SVG untuk Soalan Pengurusan Data KSSR
+     */
+    function buildPieChartSVG(slices) {
+      const cx = 68, cy = 68, r = 56;
+      let startAngle = -90;
+      let paths = '';
+
+      slices.forEach(s => {
+        const angle = (s.pct / 100) * 360;
+        const endAngle = startAngle + angle;
+        const rad1 = (Math.PI / 180) * startAngle;
+        const rad2 = (Math.PI / 180) * endAngle;
+        const x1 = cx + r * Math.cos(rad1);
+        const y1 = cy + r * Math.sin(rad1);
+        const x2 = cx + r * Math.cos(rad2);
+        const y2 = cy + r * Math.sin(rad2);
+        const largeArc = angle > 180 ? 1 : 0;
+
+        const midAngle = (Math.PI / 180) * (startAngle + angle / 2);
+        const lx = cx + (r * 0.62) * Math.cos(midAngle);
+        const ly = cy + (r * 0.62) * Math.sin(midAngle);
+
+        paths += `
+          <path d="M ${cx} ${cy} L ${x1.toFixed(1)} ${y1.toFixed(1)} A ${r} ${r} 0 ${largeArc} 1 ${x2.toFixed(1)} ${y2.toFixed(1)} Z"
+                fill="${s.fill}" stroke="#000" stroke-width="1.3" />
+          <text x="${lx.toFixed(1)}" y="${ly.toFixed(1)}" text-anchor="middle" dominant-baseline="middle"
+                font-size="9.5" font-weight="bold" fill="#000">${s.displayPct}</text>
+        `;
+        startAngle = endAngle;
+      });
+
+      const legendHTML = slices.map(s => `
+        <div class="flex items-center gap-1.5 text-[10pt]">
+          <span style="display:inline-block;width:12px;height:12px;background:${s.fill};border:1px solid #000;"></span>
+          <span><strong>${s.label}</strong> (${s.displayPct})</span>
+        </div>
+      `).join('');
+
+      return `
+        <div class="flex items-center justify-center gap-6 border border-black px-5 py-2.5 bg-white">
+          <svg width="136" height="136" viewBox="0 0 136 136">${paths}</svg>
+          <div class="space-y-1.5 text-left">${legendHTML}</div>
+        </div>
+      `;
+    }
+
+    /**
+     * ==========================================================================
+     * ENJIN PENJANA SOALAN PELBAGAI CORAK KSSR (BAHAGIAN A: 13 SOALAN = 26 MARKAH)
+     * ==========================================================================
+     */
+    function buildBahagianA(yearLevel, focusMode) {
+      const isY6 = yearLevel === 6;
+      const isY5 = yearLevel === 5;
+      const scale = isY6 ? 1000000 : (isY5 ? 100000 : 10000);
+      const u = isY6 ? 'juta' : (isY5 ? 'ratus ribu' : 'puluh ribu');
+      const scText = formatWhole(scale);
+
+      const prefNum = focusMode === 'MATEMATIK_NOMBOR' ? [0, 1, 3] : (focusMode === 'MATEMATIK_SUKATAN_DATA' ? [1, 2, 3] : null);
+      const prefMix = focusMode === 'MATEMATIK_NOMBOR' ? [0, 1] : (focusMode === 'MATEMATIK_SUKATAN_DATA' ? [2, 3] : null);
+
+      const questions = [];
+
+      // ------------------------------------------------------------------------
+      // SOALAN 1 [1 markah] — 4 Corak Berbeza
+      // ------------------------------------------------------------------------
+      const p1 = pickNextPatternIndex('A1', 4, prefNum);
+      if (p1 === 0) {
+        const num = isY6 ? randItem([4609000, 7035200, 2910800, 8400650, 6150090, 9270040])
+          : (isY5 ? randItem([460900, 703520, 291080, 840650]) : randItem([46090, 70352, 29108, 84065]));
+        const ans = nomborKePerkataan(num);
+        questions.push({
+          no: 1, marks: 1, topic: 'Nombor Bulat (Perkataan)',
+          bodyHTML: `<div><strong>1.</strong> Tuliskan <strong>${formatWhole(num)}</strong> dalam bentuk perkataan.</div>`,
+          answerAreaHTML: `<div class="mt-4 pl-5"><div class="border-b border-dotted border-black h-6 w-full"></div></div>`,
+          steps: `Nombor diberi: <strong>${formatWhole(num)}</strong><br/>Tulis mengikut kumpulan nilai tempat juta, ribu dan sa.`,
+          ansHTML: ans,
+          note: 'Ejaan perkataan mesti lengkap dan tepat [N1].',
+          valid: ans.length > 5
+        });
+      } else if (p1 === 1) {
+        const presets = isY6 ? [
+          { numStr: '6 4<u>8</u>2 910', digit: 8, tempat: 'puluh ribu', nilai: '80 000' },
+          { numStr: '3 <u>7</u>15 402', digit: 7, tempat: 'ratus ribu', nilai: '700 000' },
+          { numStr: '9 124 <u>6</u>35', digit: 6, tempat: 'ratus', nilai: '600' },
+          { numStr: '5 20<u>9</u> 841', digit: 9, tempat: 'ribu', nilai: '9 000' }
+        ] : [
+          { numStr: '4<u>6</u>2 815', digit: 6, tempat: 'puluh ribu', nilai: '60 000' },
+          { numStr: '<u>8</u>35 190', digit: 8, tempat: 'ratus ribu', nilai: '800 000' }
+        ];
+        const pick = randItem(presets);
+        const askTempat = Math.random() < 0.5;
+        questions.push({
+          no: 1, marks: 1, topic: 'Nilai Tempat & Nilai Digit',
+          bodyHTML: `<div><strong>1.</strong> Nyatakan <strong>${askTempat ? 'nilai tempat' : 'nilai digit'}</strong> bagi digit yang bergaris dalam nombor <strong>${pick.numStr}</strong>.</div>`,
+          answerAreaHTML: `<div class="mt-4 pl-5">Jawapan: <span class="dotted-line"></span></div>`,
+          steps: `Digit bergaris ialah <strong>${pick.digit}</strong> pada rumah <strong>${pick.tempat}</strong>.<br/>Nilai digitnya ialah <strong>${pick.nilai}</strong>.`,
+          ansHTML: askTempat ? pick.tempat : pick.nilai,
+          note: `Pastikan tidak keliru antara nilai tempat (${pick.tempat}) dan nilai digit (${pick.nilai}) [N1].`,
+          valid: true
+        });
+      } else if (p1 === 2) {
+        const presets = isY6 ? [
+          { num: 6374890, place: 'ratus ribu', ans: 6400000 },
+          { num: 4829150, place: 'ratus ribu', ans: 4800000 },
+          { num: 7548320, place: 'puluh ribu', ans: 7550000 },
+          { num: 2963400, place: 'ratus ribu', ans: 3000000 }
+        ] : [
+          { num: 637489, place: 'puluh ribu', ans: 640000 },
+          { num: 482915, place: 'ratus ribu', ans: 500000 }
+        ];
+        const pick = randItem(presets);
+        questions.push({
+          no: 1, marks: 1, topic: 'Pembundaran Nombor',
+          bodyHTML: `<div><strong>1.</strong> Bundarkan <strong>${formatWhole(pick.num)}</strong> kepada <strong>${pick.place}</strong> terdekat.</div>`,
+          answerAreaHTML: `<div class="mt-4 pl-5">Jawapan: <span class="dotted-line"></span></div>`,
+          steps: `Nombor asal: ${formatWhole(pick.num)}<br/>Lihat digit di sebelah kanan nilai tempat ${pick.place} dan bundarkan.`,
+          ansHTML: formatWhole(pick.ans),
+          note: 'Jawapan dalam nombor bulat [N1].',
+          valid: pick.ans > 0
+        });
+      } else {
+        const presets = isY6 ? [
+          { num: 5042700, cerakin: '5 000 000 + 40 000 + 2 000 + 700' },
+          { num: 8306090, cerakin: '8 000 000 + 300 000 + 6 000 + 90' },
+          { num: 3720504, cerakin: '3 000 000 + 700 000 + 20 000 + 500 + 4' }
+        ] : [
+          { num: 504270, cerakin: '500 000 + 4 000 + 200 + 70' },
+          { num: 830609, cerakin: '800 000 + 30 000 + 600 + 9' }
+        ];
+        const pick = randItem(presets);
+        questions.push({
+          no: 1, marks: 1, topic: 'Cerakinan Nombor',
+          bodyHTML: `<div><strong>1.</strong> Cerakinkan <strong>${formatWhole(pick.num)}</strong> mengikut nilai digit.</div>`,
+          answerAreaHTML: `<div class="mt-4 pl-5"><div class="border-b border-dotted border-black h-6 w-full"></div></div>`,
+          steps: `Cerakinan nilai digit bagi ${formatWhole(pick.num)}:<br/>= ${pick.cerakin}`,
+          ansHTML: pick.cerakin,
+          note: 'Terima susunan cerakinan dalam mana-mana tertib yang betul [N1].',
+          valid: true
+        });
+      }
+
+      // ------------------------------------------------------------------------
+      // SOALAN 2 [1 markah] — 4 Corak Berbeza (Rajah 1)
+      // ------------------------------------------------------------------------
+      const p2 = pickNextPatternIndex('A2', 4, prefMix);
+      if (p2 === 0) {
+        const dec = randItem(['1.045', '2.308', '4.075', '3.625', '5.018', '6.405', '7.125']);
+        const cardText = perpuluhanKePerkataan(dec, u);
+        questions.push({
+          no: 2, marks: 1, topic: 'Perpuluhan Juta (Kad)',
+          bodyHTML: `
+            <div><strong>2.</strong> Rajah 1 menunjukkan sekeping kad. Tulis nombor dalam angka perpuluhan ${u}.</div>
+            <div class="mt-2.5 flex flex-col items-center">
+              <div class="border-[1.6px] border-black px-8 py-2.5 font-bold text-[12pt] text-center min-w-[290px]">${cardText}</div>
+              <div class="text-[10.5pt] font-bold mt-1">Rajah 1</div>
+            </div>
+          `,
+          answerAreaHTML: `<div class="mt-2.5 pl-5"><div class="border-b border-dotted border-black h-6 w-64"></div></div>`,
+          steps: `Kad: "${cardText}"<br/>Tukarkan perkataan kepada angka perpuluhan ${u}.`,
+          ansHTML: `${dec} ${u}`,
+          note: 'Unit "' + u + '" perlu ditulis [N1].',
+          valid: parseFloat(dec) > 0
+        });
+      } else if (p2 === 1) {
+        const presets = [
+          { start: 1.2, step: 0.25 },
+          { start: 2.05, step: 0.15 },
+          { start: 3.1, step: 0.3 }
+        ];
+        const pk = randItem(presets);
+        const v0 = formatDecimal(pk.start);
+        const v1 = formatDecimal(pk.start + pk.step);
+        const v2 = formatDecimal(pk.start + pk.step * 2);
+        const v3 = formatDecimal(pk.start + pk.step * 3);
+        questions.push({
+          no: 2, marks: 1, topic: 'Garis Nombor',
+          bodyHTML: `
+            <div><strong>2.</strong> Rajah 1 menunjukkan satu garis nombor. Nyatakan nilai <strong>P</strong>.</div>
+            <div class="mt-2.5 flex flex-col items-center">
+              <svg width="360" height="58" viewBox="0 0 360 58">
+                <line x1="25" y1="22" x2="335" y2="22" stroke="#000" stroke-width="1.8" />
+                <polygon points="25,22 32,18 32,26" fill="#000" />
+                <polygon points="335,22 328,18 328,26" fill="#000" />
+                <line x1="65" y1="15" x2="65" y2="29" stroke="#000" stroke-width="1.8" />
+                <line x1="142" y1="15" x2="142" y2="29" stroke="#000" stroke-width="1.8" />
+                <line x1="218" y1="15" x2="218" y2="29" stroke="#000" stroke-width="1.8" />
+                <line x1="295" y1="15" x2="295" y2="29" stroke="#000" stroke-width="1.8" />
+                <text x="65" y="46" text-anchor="middle" font-size="13" font-weight="bold">${v0} ${u}</text>
+                <text x="142" y="46" text-anchor="middle" font-size="13" font-weight="bold">${v1} ${u}</text>
+                <text x="218" y="46" text-anchor="middle" font-size="14" font-weight="bold">P</text>
+                <text x="295" y="46" text-anchor="middle" font-size="13" font-weight="bold">${v3} ${u}</text>
+              </svg>
+              <div class="text-[10.5pt] font-bold">Rajah 1</div>
+            </div>
+          `,
+          answerAreaHTML: `<div class="mt-2 pl-5">P = <span class="dotted-line"></span></div>`,
+          steps: `Sela antara dua senggatan = ${v1} &minus; ${v0} = ${pk.step} ${u}<br/>P = ${v1} + ${pk.step} = ${v2} ${u}`,
+          ansHTML: `${v2} ${u}`,
+          note: 'Terima jawapan dalam perpuluhan yang tepat [N1].',
+          valid: true
+        });
+      } else if (p2 === 2) {
+        const scenarios = [
+          {
+            desc: 'Sebuah kotak mengandungi <strong>9 biji guli merah</strong> dan <strong>1 biji guli biru</strong>.',
+            q: 'Nyatakan kebolehjadian mengeluarkan sebiji guli <strong>merah</strong> secara rawak dari kotak itu.',
+            ans: 'Besar kemungkinan',
+            reason: 'Bilangan guli merah (9) jauh lebih banyak daripada guli biru (1).'
+          },
+          {
+            desc: 'Sebuah beg mengandungi <strong>6 batang pen hitam</strong> dan <strong>6 batang pen biru</strong>.',
+            q: 'Nyatakan kebolehjadian mengeluarkan sebatang pen <strong>biru</strong> secara rawak dari beg itu.',
+            ans: 'Sama kemungkinan',
+            reason: 'Bilangan pen hitam dan pen biru adalah sama banyak (6 batang).'
+          },
+          {
+            desc: 'Sebuah balang hanya berisi <strong>10 keping kad bernombor genap</strong>.',
+            q: 'Nyatakan kebolehjadian mengeluarkan sekeping kad bernombor <strong>ganjil</strong> dari balang itu.',
+            ans: 'Mustahil',
+            reason: 'Tiada kad bernombor ganjil di dalam balang tersebut.'
+          }
+        ];
+        const sc = randItem(scenarios);
+        questions.push({
+          no: 2, marks: 1, topic: 'Kebolehjadian Peristiwa',
+          bodyHTML: `<div><strong>2.</strong> ${sc.desc} ${sc.q}</div>`,
+          answerAreaHTML: `<div class="mt-4 pl-5">Jawapan: <span class="dotted-line"></span></div>`,
+          steps: `${sc.reason}<br/>Kebolehjadian: <strong>${sc.ans}</strong>`,
+          ansHTML: sc.ans,
+          note: 'Gunakan istilah kebolehjadian KSSR (Pasti / Mustahil / Besar kemungkinan / Kecil kemungkinan / Sama kemungkinan) [N1].',
+          valid: true
+        });
+      } else {
+        const r = randItem([6.5, 7.5, 8.5, 9.5, 11.5]);
+        const d = r * 2;
+        const askDiameter = Math.random() < 0.5;
+        questions.push({
+          no: 2, marks: 1, topic: 'Ruang (Bulatan: Jejari & Diameter)',
+          bodyHTML: `
+            <div><strong>2.</strong> Rajah 1 menunjukkan sebuah bulatan berpusat <strong>O</strong>. ${askDiameter ? `Diberi panjang jejari bulatan ialah <strong>${r} cm</strong>, hitung panjang diameter bulatan itu.` : `Diberi panjang diameter bulatan ialah <strong>${d} cm</strong>, hitung panjang jejari bulatan itu.`}</div>
+            <div class="mt-2 flex flex-col items-center">
+              <svg width="110" height="86" viewBox="0 0 110 86">
+                <circle cx="55" cy="43" r="34" fill="none" stroke="#000" stroke-width="1.6" />
+                <circle cx="55" cy="43" r="2.5" fill="#000" />
+                <text x="51" y="38" font-size="11" font-weight="bold">O</text>
+                ${askDiameter
+                  ? `<line x1="55" y1="43" x2="89" y2="43" stroke="#000" stroke-width="1.5" /><text x="72" y="55" text-anchor="middle" font-size="10" font-weight="bold">${r} cm</text>`
+                  : `<line x1="21" y1="43" x2="89" y2="43" stroke="#000" stroke-width="1.5" /><text x="55" y="55" text-anchor="middle" font-size="10" font-weight="bold">${d} cm</text>`}
+              </svg>
+              <div class="text-[10pt] font-bold">Rajah 1</div>
+            </div>
+          `,
+          answerAreaHTML: `<div class="mt-2 pl-5">Jawapan: <span class="dotted-line"></span> cm</div>`,
+          steps: askDiameter
+            ? `Diameter = 2 &times; Jejari = 2 &times; ${r} cm = ${d} cm`
+            : `Jejari = Diameter &divide; 2 = ${d} cm &divide; 2 = ${r} cm`,
+          ansHTML: `${askDiameter ? d : r} cm`,
+          note: 'Diameter = 2 × jejari [N1].',
+          valid: true
+        });
+      }
+
+      // ------------------------------------------------------------------------
+      // SOALAN 3 [2 markah] — 4 Corak Berbeza
+      // ------------------------------------------------------------------------
+      const p3 = pickNextPatternIndex('A3', 4, prefMix);
+      if (p3 === 0) {
+        const f = randItem([{ n: 3, d: 4 }, { n: 3, d: 5 }, { n: 3, d: 8 }, { n: 5, d: 8 }, { n: 7, d: 8 }, { n: 7, d: 10 }]);
+        const whole = Math.round((f.n / f.d) * scale);
+        const div = gcd(whole, scale);
+        questions.push({
+          no: 3, marks: 2, topic: 'Pecahan Juta',
+          bodyHTML: `<div><strong>3.</strong> Tukarkan <strong>${formatWhole(whole)}</strong> kepada pecahan ${u}.</div>`,
+          answerAreaHTML: `<div class="h-14"></div><div class="pl-5">Jawapan: <span class="dotted-line"></span> ${u}</div>`,
+          steps: `${formatWhole(whole)} &divide; ${scText} = ${fracHTML(formatWhole(whole), scText)} [K1]<br/>Permudahkan dengan ${formatWhole(div)}: = ${fracHTML(f.n, f.d)} ${u}`,
+          ansHTML: `${fracHTML(f.n, f.d)} ${u}`,
+          note: 'Pecahan mesti dalam bentuk termudah [N1].',
+          valid: true
+        });
+      } else if (p3 === 1) {
+        const presets = [
+          { w: 1, n: 3, d: 5, pct: 160 },
+          { w: 1, n: 3, d: 4, pct: 175 },
+          { w: 2, n: 1, d: 5, pct: 220 },
+          { w: 1, n: 7, d: 20, pct: 135 },
+          { w: 1, n: 2, d: 5, pct: 140 }
+        ];
+        const pk = randItem(presets);
+        questions.push({
+          no: 3, marks: 2, topic: 'Peratus Melebihi 100%',
+          bodyHTML: `<div><strong>3.</strong> Tukarkan <strong>${mixedFracHTML(pk.w, pk.n, pk.d)}</strong> kepada peratus.</div>`,
+          answerAreaHTML: `<div class="h-14"></div><div class="pl-5">Jawapan: <span class="dotted-line"></span> %</div>`,
+          steps: `${mixedFracHTML(pk.w, pk.n, pk.d)} = ${fracHTML(pk.w * pk.d + pk.n, pk.d)}<br/>${fracHTML(pk.w * pk.d + pk.n, pk.d)} &times; 100% [K1] = ${pk.pct}%`,
+          ansHTML: `${pk.pct}%`,
+          note: 'Simbol % wajib ada [N1].',
+          valid: true
+        });
+      } else if (p3 === 2) {
+        const presets = [
+          { q: '4.065 kg', u1: 'kg', u2: 'g', a1: 4, a2: 65, factor: 1000 },
+          { q: '6.08 km', u1: 'km', u2: 'm', a1: 6, a2: 80, factor: 1000 },
+          { q: '3.045 ℓ', u1: 'ℓ', u2: 'mℓ', a1: 3, a2: 45, factor: 1000 },
+          { q: '7.09 kg', u1: 'kg', u2: 'g', a1: 7, a2: 90, factor: 1000 }
+        ];
+        const pk = randItem(presets);
+        questions.push({
+          no: 3, marks: 2, topic: 'Penukaran Unit Ukuran',
+          bodyHTML: `<div><strong>3.</strong> Nyatakan <strong>${pk.q}</strong> dalam ${pk.u1} dan ${pk.u2}.</div>`,
+          answerAreaHTML: `<div class="h-14"></div><div class="pl-5">Jawapan: ................ ${pk.u1} ................ ${pk.u2}</div>`,
+          steps: `${pk.q} = ${pk.a1} ${pk.u1} + (0.${String(pk.a2).padStart(3, '0')} &times; ${pk.factor}) ${pk.u2} [K1]<br/>= ${pk.a1} ${pk.u1} ${pk.a2} ${pk.u2}`,
+          ansHTML: `${pk.a1} ${pk.u1} ${pk.a2} ${pk.u2}`,
+          note: 'Pastikan penukaran perpuluhan kepada ribu tepat [N1].',
+          valid: true
+        });
+      } else {
+        const presets = [
+          { part: 42, total: 120, pct: 35 },
+          { part: 54, total: 150, pct: 36 },
+          { part: 63, total: 180, pct: 35 },
+          { part: 72, total: 160, pct: 45 }
+        ];
+        const pk = randItem(presets);
+        questions.push({
+          no: 3, marks: 2, topic: 'Peratusan Kuantiti',
+          bodyHTML: `<div><strong>3.</strong> Hitung peratusan bagi <strong>${pk.part}</strong> biji epal daripada <strong>${pk.total}</strong> biji epal.</div>`,
+          answerAreaHTML: `<div class="h-14"></div><div class="pl-5">Jawapan: <span class="dotted-line"></span> %</div>`,
+          steps: `${fracHTML(pk.part, pk.total)} &times; 100% [K1] = ${pk.pct}%`,
+          ansHTML: `${pk.pct}%`,
+          note: 'Jawapan tepat [N1].',
+          valid: Math.round((pk.part / pk.total) * 100) === pk.pct
+        });
+      }
+
+      // ------------------------------------------------------------------------
+      // SOALAN 4 [2 markah] — 4 Corak Berbeza (Jadual 1)
+      // ------------------------------------------------------------------------
+      const p4 = pickNextPatternIndex('A4', 4, prefMix);
+      if (p4 === 0) {
+        const ctx = randItem([
+          { item: 'sarung tangan', e1: 'Kilang P', e2: 'Kilang Q', wadah: 'kilang' },
+          { item: 'anak pokok', e1: 'Tapak Semaian A', e2: 'Tapak Semaian B', wadah: 'tapak semaian' },
+          { item: 'buku latihan', e1: 'Pengedar K', e2: 'Pengedar L', wadah: 'pengedar' }
+        ]);
+        const f = randItem([{ n: 1, d: 4 }, { n: 3, d: 8 }, { n: 2, d: 5 }, { n: 3, d: 4 }]);
+        const dec = randItem([0.185, 0.245, 0.315, 0.425]);
+        const v1 = Math.round((f.n / f.d) * scale);
+        const v2 = Math.round(dec * scale);
+        const tot = v1 + v2;
+        questions.push({
+          no: 4, marks: 2, topic: 'Tambah Pecahan & Perpuluhan Juta',
+          bodyHTML: `
+            <div><strong>4.</strong> Jadual 1 menunjukkan bilangan ${ctx.item} yang dibekalkan kepada ${ctx.e1} dan ${ctx.e2}.</div>
+            <div class="mt-2 flex flex-col items-center">
+              <table class="exam-table w-72">
+                <thead><tr class="font-bold"><th>${ctx.e1}</th><th>${ctx.e2}</th></tr></thead>
+                <tbody><tr><td>${fracHTML(f.n, f.d)} ${u}</td><td>${dec} ${u}</td></tr></tbody>
+              </table>
+              <div class="text-[10.5pt] font-bold">Jadual 1</div>
+            </div>
+            <div class="pl-5 mt-1.5">Hitung jumlah bilangan ${ctx.item} yang dibekalkan kepada kedua-dua ${ctx.wadah} tersebut. Berikan jawapan dalam nombor bulat.</div>
+          `,
+          answerAreaHTML: `<div class="h-12"></div><div class="pl-5">Jawapan: <span class="dotted-line"></span></div>`,
+          steps: `${ctx.e1} = ${formatWhole(v1)} &nbsp;;&nbsp; ${ctx.e2} = ${formatWhole(v2)}<br/>Jumlah = ${formatWhole(v1)} + ${formatWhole(v2)} [K1] = ${formatWhole(tot)}`,
+          ansHTML: formatWhole(tot),
+          note: 'Jawapan mesti dalam nombor bulat [N1].',
+          valid: v1 + v2 === tot
+        });
+      } else if (p4 === 1) {
+        const presets = [
+          { b1: 'Bekas J', v1Text: '4.25 kg', v1G: 4250, b2: 'Bekas K', v2Text: '2 kg 680 g', v2G: 2680, unit: 'g', item: 'tepung' },
+          { b1: 'Tong M', v1Text: '5.4 ℓ', v1G: 5400, b2: 'Tong N', v2Text: '3 ℓ 750 mℓ', v2G: 3750, unit: 'mℓ', item: 'air mineral' },
+          { b1: 'Kotak R', v1Text: '6.15 kg', v1G: 6150, b2: 'Kotak S', v2Text: '3 kg 490 g', v2G: 3490, unit: 'g', item: 'gula' }
+        ];
+        const pk = randItem(presets);
+        const diff = pk.v1G - pk.v2G;
+        questions.push({
+          no: 4, marks: 2, topic: 'Tolak Ukuran Pelbagai Unit',
+          bodyHTML: `
+            <div><strong>4.</strong> Jadual 1 menunjukkan sukatan ${pk.item} di dalam dua buah bekas.</div>
+            <div class="mt-2 flex flex-col items-center">
+              <table class="exam-table w-72">
+                <thead><tr class="font-bold"><th>${pk.b1}</th><th>${pk.b2}</th></tr></thead>
+                <tbody><tr><td>${pk.v1Text}</td><td>${pk.v2Text}</td></tr></tbody>
+              </table>
+              <div class="text-[10.5pt] font-bold">Jadual 1</div>
+            </div>
+            <div class="pl-5 mt-1.5">Hitung beza sukatan ${pk.item} antara kedua-dua bekas itu dalam <strong>${pk.unit}</strong>.</div>
+          `,
+          answerAreaHTML: `<div class="h-12"></div><div class="pl-5">Jawapan: <span class="dotted-line"></span> ${pk.unit}</div>`,
+          steps: `${pk.b1} = ${pk.v1G} ${pk.unit} &nbsp;;&nbsp; ${pk.b2} = ${pk.v2G} ${pk.unit}<br/>Beza = ${pk.v1G} &minus; ${pk.v2G} [K1] = ${diff} ${pk.unit}`,
+          ansHTML: `${diff} ${pk.unit}`,
+          note: 'Unit jawapan mesti dalam ' + pk.unit + ' [N1].',
+          valid: diff > 0
+        });
+      } else if (p4 === 2) {
+        const presets = [
+          { a1: 'Melukis poster', h1: 1, m1: 45, a2: 'Mewarna poster', h2: 2, m2: 35 },
+          { a1: 'Perjalanan pergi', h1: 2, m1: 50, a2: 'Perjalanan balik', h2: 3, m2: 25 },
+          { a1: 'Latihan balapan', h1: 1, m1: 55, a2: 'Latihan padang', h2: 1, m2: 40 }
+        ];
+        const pk = randItem(presets);
+        const totMin = pk.m1 + pk.m2;
+        const ansH = pk.h1 + pk.h2 + Math.floor(totMin / 60);
+        const ansM = totMin % 60;
+        questions.push({
+          no: 4, marks: 2, topic: 'Tambah Masa & Waktu',
+          bodyHTML: `
+            <div><strong>4.</strong> Jadual 1 menunjukkan tempoh masa dua aktiviti yang dijalankan oleh Amir.</div>
+            <div class="mt-2 flex flex-col items-center">
+              <table class="exam-table w-80">
+                <thead><tr class="font-bold"><th>Aktiviti</th><th>Tempoh Masa</th></tr></thead>
+                <tbody>
+                  <tr><td>${pk.a1}</td><td>${pk.h1} jam ${pk.m1} minit</td></tr>
+                  <tr><td>${pk.a2}</td><td>${pk.h2} jam ${pk.m2} minit</td></tr>
+                </tbody>
+              </table>
+              <div class="text-[10.5pt] font-bold">Jadual 1</div>
+            </div>
+            <div class="pl-5 mt-1.5">Hitung jumlah tempoh masa kedua-dua aktiviti tersebut.</div>
+          `,
+          answerAreaHTML: `<div class="h-10"></div><div class="pl-5">Jawapan: <span class="dotted-line"></span></div>`,
+          steps: `(${pk.h1} jam ${pk.m1} minit) + (${pk.h2} jam ${pk.m2} minit) [K1]<br/>= ${pk.h1 + pk.h2} jam ${totMin} minit = ${ansH} jam ${ansM} minit`,
+          ansHTML: `${ansH} jam ${ansM} minit`,
+          note: '60 minit = 1 jam [N1].',
+          valid: true
+        });
+      } else {
+        const presets = [
+          { n1: 'Aina', w1: 1485.60, n2: 'Balqis', w2: 2349.85 },
+          { n1: 'Daniel', w1: 3120.75, n2: 'Farhan', w2: 1895.50 },
+          { n1: 'Siti', w1: 2645.90, n2: 'Hana', w2: 1780.45 }
+        ];
+        const pk = randItem(presets);
+        const tot = Math.round((pk.w1 + pk.w2) * 100) / 100;
+        questions.push({
+          no: 4, marks: 2, topic: 'Tambah Wang',
+          bodyHTML: `
+            <div><strong>4.</strong> Jadual 1 menunjukkan wang simpanan bagi dua orang murid.</div>
+            <div class="mt-2 flex flex-col items-center">
+              <table class="exam-table w-72">
+                <thead><tr class="font-bold"><th>${pk.n1}</th><th>${pk.n2}</th></tr></thead>
+                <tbody><tr><td>${formatRM(pk.w1)}</td><td>${formatRM(pk.w2)}</td></tr></tbody>
+              </table>
+              <div class="text-[10.5pt] font-bold">Jadual 1</div>
+            </div>
+            <div class="pl-5 mt-1.5">Hitung jumlah wang simpanan mereka berdua.</div>
+          `,
+          answerAreaHTML: `<div class="h-12"></div><div class="pl-5">Jawapan: <span class="dotted-line"></span></div>`,
+          steps: `${formatRM(pk.w1)} + ${formatRM(pk.w2)} [K1] = ${formatRM(tot)}`,
+          ansHTML: formatRM(tot),
+          note: 'Simbol RM dan dua tempat perpuluhan wajib ditulis [N1].',
+          valid: true
+        });
+      }
+
+      // ------------------------------------------------------------------------
+      // SOALAN 5 [2 markah] — 4 Corak Berbeza (Operasi Pecahan / Perpuluhan)
+      // ------------------------------------------------------------------------
+      const p5 = pickNextPatternIndex('A5', 4, prefNum);
+      if (p5 === 0) {
+        const obj = randItem([
+          { w: 2, n: 1, d: 4, div: 5 },
+          { w: 4, n: 1, d: 2, div: 4 },
+          { w: 5, n: 3, d: 5, div: 8 },
+          { w: 3, n: 3, d: 4, div: 6 },
+          { w: 6, n: 3, d: 5, div: 8 }
+        ]);
+        const wholeDiv = Math.round((obj.w + obj.n / obj.d) * scale);
+        const wholeQuo = Math.round(wholeDiv / obj.div);
+        const decQuo = formatDecimal(wholeQuo / scale);
+        questions.push({
+          no: 5, marks: 2, topic: 'Bahagi Nombor Bercampur Juta',
+          bodyHTML: `
+            <div><strong>5.</strong> Selesaikan jawapan dalam perpuluhan ${u}.</div>
+            <div class="mt-3 pl-5 text-[12.5pt]">${mixedFracHTML(obj.w, obj.n, obj.d)} ${u} &divide; ${obj.div} =</div>
+          `,
+          answerAreaHTML: `<div class="h-20"></div><div class="pl-5">Jawapan: <span class="dotted-line"></span> ${u}</div>`,
+          steps: `${formatWhole(wholeDiv)} &divide; ${obj.div} = ${formatWhole(wholeQuo)} [K1]<br/>Dalam perpuluhan ${u}: ${decQuo} ${u}`,
+          ansHTML: `${decQuo} ${u}`,
+          note: 'Unit "' + u + '" wajib dinyatakan [N1].',
+          valid: wholeQuo * obj.div === wholeDiv
+        });
+      } else if (p5 === 1) {
+        const presets = [
+          { w1: 0, n1: 3, d1: 4, n2: 3, d2: 8, ans: '2' },
+          { w1: 0, n1: 4, d1: 5, n2: 2, d2: 15, ans: '6' },
+          { w1: 1, n1: 1, d1: 2, n2: 3, d2: 8, ans: '4' },
+          { w1: 2, n1: 1, d1: 4, n2: 3, d2: 8, ans: '6' },
+          { w1: 0, n1: 5, d1: 6, n2: 5, d2: 12, ans: '2' }
+        ];
+        const pk = randItem(presets);
+        const impNum = pk.w1 * pk.d1 + pk.n1;
+        questions.push({
+          no: 5, marks: 2, topic: 'Bahagi Pecahan (KSSR Tahun 6)',
+          bodyHTML: `
+            <div><strong>5.</strong> Hitung nilai bagi:</div>
+            <div class="mt-3 pl-5 text-[12.5pt]">${mixedFracHTML(pk.w1, pk.n1, pk.d1)} &divide; ${fracHTML(pk.n2, pk.d2)} =</div>
+          `,
+          answerAreaHTML: `<div class="h-20"></div><div class="pl-5">Jawapan: <span class="dotted-line"></span></div>`,
+          steps: `${fracHTML(impNum, pk.d1)} &times; ${fracHTML(pk.d2, pk.n2)} [K1] = ${pk.ans}`,
+          ansHTML: pk.ans,
+          note: 'Songsangkan pecahan kedua dan tukar operasi bahagi kepada darab [N1].',
+          valid: true
+        });
+      } else if (p5 === 2) {
+        const presets = [
+          { a: 3.25, b: 1.4, ans: '4.55' },
+          { a: 2.45, b: 1.6, ans: '3.92' },
+          { a: 4.15, b: 1.2, ans: '4.98' },
+          { a: 3.75, b: 1.8, ans: '6.75' }
+        ];
+        const pk = randItem(presets);
+        questions.push({
+          no: 5, marks: 2, topic: 'Darab Perpuluhan',
+          bodyHTML: `
+            <div><strong>5.</strong> Hitung hasil darab berikut:</div>
+            <div class="mt-3 pl-5 text-[12.5pt]">${pk.a} &times; ${pk.b} =</div>
+          `,
+          answerAreaHTML: `<div class="h-20"></div><div class="pl-5">Jawapan: <span class="dotted-line"></span></div>`,
+          steps: `Darab seperti nombor bulat dan letakkan titik perpuluhan (3 tempat perpuluhan):<br/>${pk.a} &times; ${pk.b} [K1] = ${pk.ans}`,
+          ansHTML: pk.ans,
+          note: 'Kedudukan titik perpuluhan mesti tepat [N1].',
+          valid: Math.abs(pk.a * pk.b - parseFloat(pk.ans)) < 0.0001
+        });
+      } else {
+        const presets = [
+          { a: 15.12, b: 1.2, ans: '12.6' },
+          { a: 18.45, b: 1.5, ans: '12.3' },
+          { a: 21.84, b: 1.4, ans: '15.6' },
+          { a: 19.36, b: 1.6, ans: '12.1' }
+        ];
+        const pk = randItem(presets);
+        questions.push({
+          no: 5, marks: 2, topic: 'Bahagi Perpuluhan',
+          bodyHTML: `
+            <div><strong>5.</strong> Selesaikan:</div>
+            <div class="mt-3 pl-5 text-[12.5pt]">${pk.a} &divide; ${pk.b} =</div>
+          `,
+          answerAreaHTML: `<div class="h-20"></div><div class="pl-5">Jawapan: <span class="dotted-line"></span></div>`,
+          steps: `Gerakkan titik perpuluhan 1 tempat ke kanan:<br/>${(pk.a * 10).toFixed(1)} &divide; ${(pk.b * 10).toFixed(0)} [K1] = ${pk.ans}`,
+          ansHTML: pk.ans,
+          note: 'Jawapan tepat [N1].',
+          valid: Math.abs(pk.a / pk.b - parseFloat(pk.ans)) < 0.0001
+        });
+      }
+
+      // ------------------------------------------------------------------------
+      // SOALAN 6 [2 markah] — 4 Corak Berbeza (Rajah 2)
+      // ------------------------------------------------------------------------
+      const p6 = pickNextPatternIndex('A6', 4, prefMix);
+      if (p6 === 0) {
+        const primes = shuffleArray([11, 13, 17, 23, 29, 31, 41, 43, 47]).slice(0, 2);
+        const comps = shuffleArray([21, 27, 33, 35, 39, 45, 49, 51, 55]).slice(0, 2);
+        const board = shuffleArray([1, ...primes, ...comps]);
+        const askComp = Math.random() < 0.65;
+        const ans = (askComp ? comps : primes).sort((a, b) => a - b);
+        questions.push({
+          no: 6, marks: 2, topic: 'Nombor Perdana & Nombor Gubahan',
+          bodyHTML: `
+            <div><strong>6.</strong> Rajah 2 di bawah menunjukkan beberapa nombor di papan tulis.</div>
+            <div class="mt-2.5 flex flex-col items-center">
+              <div class="border-[2px] border-black w-80 relative px-6 py-3 font-bold text-[13pt]" style="height:102px;">
+                <span class="absolute top-3 left-8">${board[0]}</span>
+                <span class="absolute top-4 right-10">${board[1]}</span>
+                <span class="absolute top-10 left-36">${board[2]}</span>
+                <span class="absolute bottom-2.5 left-14">${board[3]}</span>
+                <span class="absolute bottom-2.5 right-12">${board[4]}</span>
+              </div>
+              <div class="text-[10.5pt] font-bold mt-1">Rajah 2</div>
+            </div>
+            <div class="pl-5 mt-2">Berpandukan Rajah 2, pilih dan tuliskan <strong>${askComp ? 'nombor gubahan' : 'nombor perdana'}</strong> di dalam kotak.</div>
+          `,
+          answerAreaHTML: `
+            <div class="mt-2.5 flex justify-center">
+              <table class="exam-table w-64">
+                <thead><tr class="font-bold"><th>${askComp ? 'Nombor Gubahan' : 'Nombor Perdana'}</th></tr></thead>
+                <tbody><tr><td style="text-align:left;padding:7px 12px;"><div class="mb-2.5">a) ........................................</div><div>b) ........................................</div></td></tr></tbody>
+              </table>
+            </div>
+          `,
+          steps: `Nombor pada papan tulis: ${board.join(', ')} (1 bukan nombor perdana dan bukan nombor gubahan).<br/>${askComp ? 'Nombor gubahan' : 'Nombor perdana'}: <strong>${ans[0]}</strong> dan <strong>${ans[1]}</strong>`,
+          ansHTML: `a) ${ans[0]} &nbsp;&nbsp; b) ${ans[1]}`,
+          note: '1 markah bagi setiap jawapan yang betul [N1 + N1].',
+          valid: ans.length === 2
+        });
+      } else if (p6 === 1) {
+        const presets = [
+          { ax: 1, ay: 1, bx: 5, by: 4 },
+          { ax: 2, ay: 1, bx: 6, by: 5 },
+          { ax: 1, ay: 2, bx: 6, by: 4 }
+        ];
+        const pk = randItem(presets);
+        const dx = pk.bx - pk.ax;
+        const dy = pk.by - pk.ay;
+        const ox = 32, oy = 115, step = 18;
+        let gridLines = '';
+        for (let i = 0; i <= 7; i++) {
+          const x = ox + i * step;
+          gridLines += `<line x1="${x}" y1="${oy - 6 * step}" x2="${x}" y2="${oy}" stroke="#cbd5e1" stroke-width="1" />`;
+          if (i > 0) gridLines += `<text x="${x}" y="${oy + 12}" text-anchor="middle" font-size="9">${i}</text>`;
+        }
+        for (let j = 0; j <= 6; j++) {
+          const y = oy - j * step;
+          gridLines += `<line x1="${ox}" y1="${y}" x2="${ox + 7 * step}" y2="${y}" stroke="#cbd5e1" stroke-width="1" />`;
+          if (j > 0) gridLines += `<text x="${ox - 8}" y="${y + 3}" text-anchor="end" font-size="9">${j}</text>`;
+        }
+        const pxA = ox + pk.ax * step, pyA = oy - pk.ay * step;
+        const pxB = ox + pk.bx * step, pyB = oy - pk.by * step;
+
+        questions.push({
+          no: 6, marks: 2, topic: 'Koordinat (Jarak Mengufuk & Mencancang)',
+          bodyHTML: `
+            <div><strong>6.</strong> Rajah 2 menunjukkan kedudukan titik <strong>A</strong> dan titik <strong>B</strong> pada satah Cartes.</div>
+            <div class="mt-2 flex flex-col items-center">
+              <svg width="195" height="135" viewBox="0 0 195 135">
+                ${gridLines}
+                <line x1="${ox}" y1="${oy}" x2="${ox + 7 * step + 6}" y2="${oy}" stroke="#000" stroke-width="1.5" />
+                <line x1="${ox}" y1="${oy}" x2="${ox}" y2="${oy - 6 * step - 6}" stroke="#000" stroke-width="1.5" />
+                <text x="${ox - 8}" y="${oy + 11}" font-size="9" font-weight="bold">O</text>
+                <text x="${ox + 7 * step + 10}" y="${oy + 3}" font-size="10" font-weight="bold">x</text>
+                <text x="${ox - 3}" y="${oy - 6 * step - 10}" font-size="10" font-weight="bold">y</text>
+                <circle cx="${pxA}" cy="${pyA}" r="3.5" fill="#000" />
+                <text x="${pxA - 10}" y="${pyA - 5}" font-size="10" font-weight="bold">A</text>
+                <circle cx="${pxB}" cy="${pyB}" r="3.5" fill="#000" />
+                <text x="${pxB + 5}" y="${pyB - 5}" font-size="10" font-weight="bold">B</text>
+              </svg>
+              <div class="text-[10pt] font-bold">Rajah 2</div>
+            </div>
+            <div class="pl-5 mt-1">Nyatakan jarak mengufuk dan jarak mencancang dari titik <strong>A</strong> ke titik <strong>B</strong>.</div>
+          `,
+          answerAreaHTML: `
+            <div class="mt-2 pl-5 space-y-2">
+              <div>a) Jarak mengufuk : <span class="dotted-line"></span> unit</div>
+              <div>b) Jarak mencancang : <span class="dotted-line"></span> unit</div>
+            </div>
+          `,
+          steps: `Koordinat A(${pk.ax}, ${pk.ay}), B(${pk.bx}, ${pk.by})<br/>Jarak mengufuk = ${pk.bx} &minus; ${pk.ax} = ${dx} unit [N1]<br/>Jarak mencancang = ${pk.by} &minus; ${pk.ay} = ${dy} unit [N1]`,
+          ansHTML: `a) ${dx} unit &nbsp;|&nbsp; b) ${dy} unit`,
+          note: '1 markah bagi setiap jarak yang betul [N1 + N1].',
+          valid: dx > 0 && dy > 0
+        });
+      } else if (p6 === 2) {
+        const polys = [
+          { name: 'Pentagon sekata', sides: 5, sym: 5, diag: 5, pts: '55,10 95,38 80,82 30,82 15,38' },
+          { name: 'Heksagon sekata', sides: 6, sym: 6, diag: 9, pts: '55,10 92,30 92,68 55,88 18,68 18,30' },
+          { name: 'Oktagon sekata', sides: 8, sym: 8, diag: 20, pts: '40,10 70,10 92,32 92,62 70,84 40,84 18,62 18,32' }
+        ];
+        const pk = randItem(polys);
+        questions.push({
+          no: 6, marks: 2, topic: 'Ruang (Poligon Sekata)',
+          bodyHTML: `
+            <div><strong>6.</strong> Rajah 2 menunjukkan sebuah <strong>${pk.name.toLowerCase()}</strong>.</div>
+            <div class="mt-2 flex flex-col items-center">
+              <svg width="110" height="96" viewBox="0 0 110 96">
+                <polygon points="${pk.pts}" fill="#fff" stroke="#000" stroke-width="1.7" />
+              </svg>
+              <div class="text-[10pt] font-bold">Rajah 2</div>
+            </div>
+            <div class="pl-5 mt-1">Berdasarkan Rajah 2, nyatakan:</div>
+          `,
+          answerAreaHTML: `
+            <div class="mt-2 pl-5 space-y-2">
+              <div>a) Bilangan paksi simetri : <span class="dotted-line"></span></div>
+              <div>b) Bilangan pepenjuru : <span class="dotted-line"></span></div>
+            </div>
+          `,
+          steps: `${pk.name} mempunyai ${pk.sides} sisi sama panjang.<br/>Bilangan paksi simetri = ${pk.sym} [N1]<br/>Bilangan pepenjuru = ${pk.diag} [N1]`,
+          ansHTML: `a) ${pk.sym} &nbsp;|&nbsp; b) ${pk.diag}`,
+          note: 'Rumus pepenjuru = n(n − 3) ÷ 2 [N1 + N1].',
+          valid: true
+        });
+      } else {
+        const presets = [
+          { target: 'gandaan 9', cards: [24, 36, 42, 54, 68], ans: [36, 54] },
+          { target: 'faktor bagi 72', cards: [14, 18, 24, 30, 40], ans: [18, 24] },
+          { target: 'gandaan 12', cards: [32, 48, 56, 60, 76], ans: [48, 60] }
+        ];
+        const pk = randItem(presets);
+        questions.push({
+          no: 6, marks: 2, topic: 'Faktor & Gandaan',
+          bodyHTML: `
+            <div><strong>6.</strong> Rajah 2 menunjukkan lima keping kad nombor.</div>
+            <div class="mt-3 flex flex-col items-center">
+              <div class="flex gap-3">
+                ${pk.cards.map(c => `<div class="border-[1.6px] border-black w-14 h-12 flex items-center justify-center font-bold text-[12pt]">${c}</div>`).join('')}
+              </div>
+              <div class="text-[10.5pt] font-bold mt-1">Rajah 2</div>
+            </div>
+            <div class="pl-5 mt-2">Pilih dan tuliskan dua nombor yang merupakan <strong>${pk.target}</strong>.</div>
+          `,
+          answerAreaHTML: `
+            <div class="mt-3 pl-5 space-y-2">
+              <div>a) <span class="dotted-line"></span></div>
+              <div>b) <span class="dotted-line"></span></div>
+            </div>
+          `,
+          steps: `Semak setiap kad untuk ${pk.target}: <strong>${pk.ans[0]}</strong> dan <strong>${pk.ans[1]}</strong>.`,
+          ansHTML: `a) ${pk.ans[0]} &nbsp;|&nbsp; b) ${pk.ans[1]}`,
+          note: '1 markah bagi setiap jawapan betul [N1 + N1].',
+          valid: true
+        });
+      }
+
+      // ------------------------------------------------------------------------
+      // SOALAN 7 [2 markah] — 4 Corak Berbeza (Ayat Matematik Anu)
+      // ------------------------------------------------------------------------
+      const p7 = pickNextPatternIndex('A7', 4, prefNum);
+      if (p7 === 0) {
+        const baseDec = randItem([3.45, 4.18, 6.24, 7.52, 2.86]);
+        const smallU = isY6 ? randItem([25, 35, 45, 65, 85]) : randItem([2, 3, 4, 5]);
+        const smallLbl = `${smallU} ribu`;
+        const smallVal = smallU * 1000;
+        const baseVal = Math.round(baseDec * scale);
+        const ans = baseVal + smallVal;
+        questions.push({
+          no: 7, marks: 2, topic: 'Ayat Matematik Anu (Tolak)',
+          bodyHTML: `
+            <div><strong>7.</strong> <span class="blank-box"></span> &minus; ${baseDec} ${u} = ${smallLbl}
+              <div class="mt-2 pl-5">Cari nilai dalam petak kosong di atas. Berikan jawapan dalam nombor bulat.</div>
+            </div>
+          `,
+          answerAreaHTML: `<div class="h-16"></div><div class="pl-5">Jawapan: <span class="dotted-line"></span></div>`,
+          steps: `Petak kosong = ${formatWhole(baseVal)} + ${formatWhole(smallVal)} [K1] = ${formatWhole(ans)}`,
+          ansHTML: formatWhole(ans),
+          note: 'Jawapan mesti dalam nombor bulat [N1].',
+          valid: ans - baseVal === smallVal
+        });
+      } else if (p7 === 1) {
+        const presets = [
+          { dec: 1.35, w: 2, n: 1, d: 2 },
+          { dec: 1.65, w: 3, n: 1, d: 4 },
+          { dec: 2.15, w: 3, n: 3, d: 5 }
+        ];
+        const pk = randItem(presets);
+        const totVal = Math.round((pk.w + pk.n / pk.d) * scale);
+        const decVal = Math.round(pk.dec * scale);
+        const ans = totVal - decVal;
+        questions.push({
+          no: 7, marks: 2, topic: 'Ayat Matematik Anu (Tambah)',
+          bodyHTML: `
+            <div><strong>7.</strong> <strong>P</strong> + ${pk.dec} ${u} = ${mixedFracHTML(pk.w, pk.n, pk.d)} ${u}
+              <div class="mt-2 pl-5">Hitung nilai <strong>P</strong>. Berikan jawapan dalam nombor bulat.</div>
+            </div>
+          `,
+          answerAreaHTML: `<div class="h-16"></div><div class="pl-5">Jawapan: P = <span class="dotted-line"></span></div>`,
+          steps: `P = ${formatWhole(totVal)} &minus; ${formatWhole(decVal)} [K1] = ${formatWhole(ans)}`,
+          ansHTML: formatWhole(ans),
+          note: 'Jawapan dalam nombor bulat [N1].',
+          valid: ans + decVal === totVal
+        });
+      } else if (p7 === 2) {
+        const mult = randItem([15, 20, 25, 30]);
+        const prodDec = randItem([3.6, 4.5, 5.4, 6.3]);
+        const prodVal = Math.round(prodDec * scale);
+        const ans = Math.round(prodVal / mult);
+        questions.push({
+          no: 7, marks: 2, topic: 'Ayat Matematik Anu (Darab)',
+          bodyHTML: `
+            <div><strong>7.</strong> ${mult} &times; <span class="blank-box"></span> = ${prodDec} ${u}
+              <div class="mt-2 pl-5">Apakah nombor yang mesti ditulis di dalam petak kosong itu?</div>
+            </div>
+          `,
+          answerAreaHTML: `<div class="h-16"></div><div class="pl-5">Jawapan: <span class="dotted-line"></span></div>`,
+          steps: `Petak kosong = ${formatWhole(prodVal)} &divide; ${mult} [K1] = ${formatWhole(ans)}`,
+          ansHTML: formatWhole(ans),
+          note: 'Terima juga bentuk perpuluhan ' + u + ' yang setara [N1].',
+          valid: ans * mult === prodVal
+        });
+      } else {
+        const div = randItem([12, 15, 16, 18]);
+        const quoDec = randItem([0.045, 0.055, 0.065, 0.075]);
+        const quoVal = Math.round(quoDec * scale);
+        const ans = quoVal * div;
+        questions.push({
+          no: 7, marks: 2, topic: 'Ayat Matematik Anu (Bahagi)',
+          bodyHTML: `
+            <div><strong>7.</strong> <span class="blank-box"></span> &divide; ${div} = ${quoDec} ${u}
+              <div class="mt-2 pl-5">Cari nilai dalam petak kosong di atas. Berikan jawapan dalam nombor bulat.</div>
+            </div>
+          `,
+          answerAreaHTML: `<div class="h-16"></div><div class="pl-5">Jawapan: <span class="dotted-line"></span></div>`,
+          steps: `Petak kosong = ${formatWhole(quoVal)} &times; ${div} [K1] = ${formatWhole(ans)}`,
+          ansHTML: formatWhole(ans),
+          note: 'Jawapan mesti dalam nombor bulat [N1].',
+          valid: Math.round(ans / div) === quoVal
+        });
+      }
+
+      // ------------------------------------------------------------------------
+      // SOALAN 8 [2 markah] — 4 Corak Berbeza
+      // ------------------------------------------------------------------------
+      const p8 = pickNextPatternIndex('A8', 4, prefMix);
+      if (p8 === 0) {
+        const pair = randItem([
+          { a: 15000, b: 40 }, { a: 12500, b: 50 }, { a: 16000, b: 50 }, { a: 35000, b: 25 }, { a: 15000, b: 50 }
+        ]);
+        const aVal = isY6 ? pair.a : (isY5 ? pair.a / 10 : pair.a / 100);
+        const prod = aVal * pair.b;
+        const dv = gcd(prod, scale);
+        questions.push({
+          no: 8, marks: 2, topic: 'Darab & Pecahan Juta',
+          bodyHTML: `
+            <div><strong>8.</strong> Hitung ${formatWhole(aVal)} &times; ${pair.b}
+              <div class="mt-1 pl-5">Beri jawapan dalam pecahan ${u}.</div>
+            </div>
+          `,
+          answerAreaHTML: `<div class="h-16"></div><div class="pl-5">Jawapan: <span class="dotted-line"></span> ${u}</div>`,
+          steps: `${formatWhole(aVal)} &times; ${pair.b} = ${formatWhole(prod)} [K1]<br/>Dalam pecahan ${u}: ${fracHTML(prod / dv, scale / dv)} ${u}`,
+          ansHTML: `${fracHTML(prod / dv, scale / dv)} ${u}`,
+          note: 'Pecahan bentuk termudah [N1].',
+          valid: true
+        });
+      } else if (p8 === 1) {
+        const presets = [
+          { pct: 135, base: 480, ans: 648 },
+          { pct: 145, base: 640, ans: 928 },
+          { pct: 125, base: 560, ans: 700 },
+          { pct: 160, base: 350, ans: 560 }
+        ];
+        const pk = randItem(presets);
+        questions.push({
+          no: 8, marks: 2, topic: 'Peratusan Melebihi 100% (Wang)',
+          bodyHTML: `<div><strong>8.</strong> Hitung <strong>${pk.pct}%</strong> daripada <strong>${formatRM(pk.base)}</strong>.</div>`,
+          answerAreaHTML: `<div class="h-18"></div><div class="pl-5">Jawapan: <span class="dotted-line"></span></div>`,
+          steps: `${fracHTML(pk.pct, 100)} &times; ${formatRM(pk.base)} [K1] = ${formatRM(pk.ans)}`,
+          ansHTML: formatRM(pk.ans),
+          note: 'Simbol RM wajib ditulis [N1].',
+          valid: Math.round((pk.pct / 100) * pk.base) === pk.ans
+        });
+      } else if (p8 === 2) {
+        const s1 = randItem([8, 9, 10, 12]);
+        const s2 = randItem([4, 5, 6]);
+        const perim = 4 * s1 + 2 * s2;
+        questions.push({
+          no: 8, marks: 2, topic: 'Ruang (Perimeter Bentuk Gabungan)',
+          bodyHTML: `
+            <div><strong>8.</strong> Rajah di bawah menunjukkan gabungan dua buah segi empat sama yang bersisi <strong>${s1} cm</strong> dan <strong>${s2} cm</strong>. Hitung perimeter seluruh rajah itu.</div>
+            <div class="mt-2 flex justify-center">
+              <svg width="170" height="74" viewBox="0 0 170 74">
+                <rect x="25" y="10" width="54" height="54" fill="#fff" stroke="#000" stroke-width="1.6" />
+                <rect x="79" y="34" width="30" height="30" fill="#fff" stroke="#000" stroke-width="1.6" />
+                <text x="12" y="40" font-size="10" font-weight="bold">${s1} cm</text>
+                <text x="115" y="53" font-size="10" font-weight="bold">${s2} cm</text>
+              </svg>
+            </div>
+          `,
+          answerAreaHTML: `<div class="h-10"></div><div class="pl-5">Jawapan: <span class="dotted-line"></span> cm</div>`,
+          steps: `Perimeter = ${s1} + ${s1} + ${s1} + (${s1} &minus; ${s2}) + ${s2} + ${s2} + ${s2} [K1]<br/>= ${perim} cm`,
+          ansHTML: `${perim} cm`,
+          note: 'Ukur keliling bahagian luar sahaja [N1].',
+          valid: perim === 4 * s1 + 2 * s2
+        });
+      } else {
+        const presets = [
+          { nums: [48, 62, 55, 75], mean: 60 },
+          { nums: [120, 145, 135, 160], mean: 140 },
+          { nums: [34, 46, 52, 68], mean: 50 },
+          { nums: [85, 92, 78, 105], mean: 90 }
+        ];
+        const pk = randItem(presets);
+        const sum = pk.nums.reduce((acc, v) => acc + v, 0);
+        questions.push({
+          no: 8, marks: 2, topic: 'Pengurusan Data (Min)',
+          bodyHTML: `
+            <div><strong>8.</strong> Hitung <strong>min</strong> bagi set data berikut:
+              <div class="mt-2 pl-5 font-bold text-[12pt]">${pk.nums.join(' , ')}</div>
+            </div>
+          `,
+          answerAreaHTML: `<div class="h-14"></div><div class="pl-5">Jawapan: <span class="dotted-line"></span></div>`,
+          steps: `Min = (${pk.nums.join(' + ')}) &divide; 4 [K1]<br/>= ${sum} &divide; 4 = ${pk.mean}`,
+          ansHTML: `${pk.mean}`,
+          note: 'Rumus Min = Jumlah nilai data ÷ Bilangan data [N1].',
+          valid: sum / 4 === pk.mean
+        });
+      }
+
+      // ------------------------------------------------------------------------
+      // SOALAN 9 [3 markah] — 4 Corak Berbeza (Rajah 3, sub-soalan a & b)
+      // ------------------------------------------------------------------------
+      const p9 = pickNextPatternIndex('A9', 4, prefMix);
+      if (p9 === 0) {
+        const p = randItem([
+          { dec: 0.18, fn: 3, fd: 10, wr: 0.075 },
+          { dec: 0.42, fn: 1, fd: 4, wr: 0.085 },
+          { dec: 0.55, fn: 3, fd: 8, wr: 0.125 }
+        ]);
+        const cards = shuffleArray([
+          { disp: `${p.dec} ${u}`, val: Math.round(p.dec * scale) },
+          { disp: `${fracHTML(p.fn, p.fd)} ${u}`, val: Math.round((p.fn / p.fd) * scale) },
+          { disp: `${formatWhole(Math.round(p.wr * scale))}`, val: Math.round(p.wr * scale) }
+        ]).map((c, idx) => ({ ...c, label: ['P', 'Q', 'R'][idx] }));
+        const sorted = [...cards].sort((a, b) => b.val - a.val);
+        const diff = sorted[0].val - sorted[2].val;
+        questions.push({
+          no: 9, marks: 3, topic: 'Perbandingan Kad Nombor',
+          bodyHTML: `
+            <div><strong>9.</strong> Rajah 3 menunjukkan tiga kad nombor P, Q dan R.</div>
+            <div class="mt-2.5 flex flex-col items-center">
+              <div class="flex justify-center gap-6">
+                ${cards.map(c => `<div class="flex flex-col items-center"><div class="border-[1.5px] border-black w-32 flex items-center justify-center font-bold text-[11.5pt]" style="height:48px;">${c.disp}</div><div class="font-bold mt-1">${c.label}</div></div>`).join('')}
+              </div>
+              <div class="text-[10.5pt] font-bold mt-1">Rajah 3</div>
+            </div>
+            <div class="pl-5 mt-2 space-y-3">
+              <div>
+                <div>a) Kad yang manakah mempunyai nilai paling besar?</div>
+                <div class="mt-1.5 pl-4">Jawapan: <span class="dotted-line"></span></div>
+              </div>
+              <div>
+                <div>b) Hitung beza antara nilai yang paling besar dengan nilai yang paling kecil.</div>
+                <div class="h-11"></div>
+                <div class="pl-4">Jawapan: <span class="dotted-line"></span></div>
+              </div>
+            </div>
+          `,
+          answerAreaHTML: ``,
+          steps: `Nilai kad: ${cards.map(c => `${c.label} = ${formatWhole(c.val)}`).join(' ; ')}<br/><strong>a)</strong> Kad <strong>${sorted[0].label}</strong> [N1]<br/><strong>b)</strong> ${formatWhole(sorted[0].val)} &minus; ${formatWhole(sorted[2].val)} [K1] = ${formatWhole(diff)} [N1]`,
+          ansHTML: `a) ${sorted[0].label} &nbsp;|&nbsp; b) ${formatWhole(diff)}`,
+          note: 'Terima jawapan (b) dalam perpuluhan ' + u + ' yang setara.',
+          valid: diff > 0
+        });
+      } else if (p9 === 1) {
+        const presets = [
+          { item1: 'guli merah', item2: 'guli biru', r1: 3, r2: 5, mult: 45 },
+          { item1: 'murid lelaki', item2: 'murid perempuan', r1: 4, r2: 7, mult: 30 },
+          { item1: 'pen hitam', item2: 'pen biru', r1: 2, r2: 5, mult: 50 }
+        ];
+        const pk = randItem(presets);
+        const totRatio = pk.r1 + pk.r2;
+        const totItems = totRatio * pk.mult;
+        const ans2 = pk.r2 * pk.mult;
+        questions.push({
+          no: 9, marks: 3, topic: 'Nisbah & Kadaran',
+          bodyHTML: `
+            <div><strong>9.</strong> Nisbah bilangan <strong>${pk.item1}</strong> kepada bilangan <strong>${pk.item2}</strong> di dalam sebuah kotak ialah <strong>${pk.r1} : ${pk.r2}</strong>. Jumlah kesemuanya ialah <strong>${totItems}</strong>.</div>
+            <div class="pl-5 mt-3 space-y-4">
+              <div>
+                <div>a) Nyatakan nisbah bilangan <strong>${pk.item2}</strong> kepada jumlah keseluruhan dalam bentuk termudah.</div>
+                <div class="mt-2 pl-4">Jawapan: <span class="dotted-line"></span></div>
+              </div>
+              <div>
+                <div>b) Hitung bilangan <strong>${pk.item2}</strong> di dalam kotak itu.</div>
+                <div class="h-14"></div>
+                <div class="pl-4">Jawapan: <span class="dotted-line"></span></div>
+              </div>
+            </div>
+          `,
+          answerAreaHTML: ``,
+          steps: `<strong>a)</strong> Jumlah bahagian = ${pk.r1} + ${pk.r2} = ${totRatio} &rarr; Nisbah = <strong>${pk.r2} : ${totRatio}</strong> [N1]<br/><strong>b)</strong> 1 bahagian = ${totItems} &divide; ${totRatio} = ${pk.mult} [K1]<br/>Bilangan ${pk.item2} = ${pk.r2} &times; ${pk.mult} = ${ans2} [N1]`,
+          ansHTML: `a) ${pk.r2} : ${totRatio} &nbsp;|&nbsp; b) ${ans2}`,
+          note: 'Pastikan susunan nisbah tepat mengikut kehendak soalan.',
+          valid: true
+        });
+      } else if (p9 === 2) {
+        const presets = [
+          { cityA: 'Kuala Lumpur', gmtA: 8, cityB: 'Tokyo', gmtB: 9, diff: 1, klTime: '1430', bTime: '1530' },
+          { cityA: 'Kuala Lumpur', gmtA: 8, cityB: 'London', gmtB: 0, diff: 8, klTime: '1720', bTime: '0920' },
+          { cityA: 'Kuala Lumpur', gmtA: 8, cityB: 'Sydney', gmtB: 10, diff: 2, klTime: '1145', bTime: '1345' }
+        ];
+        const pk = randItem(presets);
+        questions.push({
+          no: 9, marks: 3, topic: 'Zon Masa Dunia (KSSR Tahun 6)',
+          bodyHTML: `
+            <div><strong>9.</strong> Jadual di bawah menunjukkan zon masa bagi dua buah bandar.</div>
+            <div class="mt-2 flex justify-center">
+              <table class="exam-table w-72">
+                <thead><tr class="font-bold"><th>Bandar</th><th>Zon Masa</th></tr></thead>
+                <tbody>
+                  <tr><td>${pk.cityA}</td><td>GMT +${pk.gmtA}</td></tr>
+                  <tr><td>${pk.cityB}</td><td>GMT ${pk.gmtB === 0 ? '0' : '+' + pk.gmtB}</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="pl-5 mt-2 space-y-3">
+              <div>
+                <div>a) Nyatakan beza masa antara ${pk.cityA} dengan ${pk.cityB}.</div>
+                <div class="mt-1.5 pl-4">Jawapan: <span class="dotted-line"></span> jam</div>
+              </div>
+              <div>
+                <div>b) Jika waktu di ${pk.cityA} ialah <strong>Jam ${pk.klTime}</strong>, nyatakan waktu di ${pk.cityB} dalam sistem 24 jam.</div>
+                <div class="h-11"></div>
+                <div class="pl-4">Jawapan: <span class="dotted-line"></span></div>
+              </div>
+            </div>
+          `,
+          answerAreaHTML: ``,
+          steps: `<strong>a)</strong> Beza zon masa = ${pk.gmtA} &minus; ${pk.gmtB} = <strong>${pk.diff} jam</strong> [N1]<br/><strong>b)</strong> ${pk.cityB} berada di sebelah ${pk.gmtB > pk.gmtA ? 'timur (+)' : 'barat (−)'} ${pk.cityA}.<br/>Waktu di ${pk.cityB} = Jam ${pk.klTime} ${pk.gmtB > pk.gmtA ? '+' : '&minus;'} ${pk.diff} jam [K1] = <strong>Jam ${pk.bTime}</strong> [N1]`,
+          ansHTML: `a) ${pk.diff} jam &nbsp;|&nbsp; b) Jam ${pk.bTime}`,
+          note: 'Terima format "Jam ' + pk.bTime + '" atau "' + pk.bTime + '".',
+          valid: true
+        });
+      } else {
+        const presets = [
+          { l: 16, w: 10, fn: 3, fd: 8 },
+          { l: 20, w: 12, fn: 2, fd: 5 },
+          { l: 18, w: 10, fn: 4, fd: 9 }
+        ];
+        const pk = randItem(presets);
+        const totalArea = pk.l * pk.w;
+        const shadedArea = (totalArea * pk.fn) / pk.fd;
+        questions.push({
+          no: 9, marks: 3, topic: 'Ruang (Luas Kawasan Berlorek)',
+          bodyHTML: `
+            <div><strong>9.</strong> Rajah 3 menunjukkan sebuah segi empat tepat berukuran <strong>${pk.l} cm</strong> panjang dan <strong>${pk.w} cm</strong> lebar. Sebanyak <strong>${fracHTML(pk.fn, pk.fd)}</strong> daripada seluruh rajah itu dilorekkan.</div>
+            <div class="mt-2 flex flex-col items-center">
+              <svg width="160" height="72" viewBox="0 0 160 72">
+                <rect x="20" y="10" width="110" height="50" fill="#fff" stroke="#000" stroke-width="1.6" />
+                <rect x="20" y="10" width="${Math.round(110 * (pk.fn / pk.fd))}" height="50" fill="#cbd5e1" stroke="#000" stroke-width="1.3" />
+                <text x="75" y="70" text-anchor="middle" font-size="10" font-weight="bold">${pk.l} cm</text>
+                <text x="145" y="38" text-anchor="middle" font-size="10" font-weight="bold">${pk.w} cm</text>
+              </svg>
+              <div class="text-[10pt] font-bold">Rajah 3</div>
+            </div>
+            <div class="pl-5 mt-1.5 space-y-2.5">
+              <div>
+                <div>a) Hitung luas seluruh segi empat tepat itu dalam cm².</div>
+                <div class="mt-1 pl-4">Jawapan: <span class="dotted-line"></span> cm²</div>
+              </div>
+              <div>
+                <div>b) Hitung luas kawasan yang berlorek dalam cm².</div>
+                <div class="h-10"></div>
+                <div class="pl-4">Jawapan: <span class="dotted-line"></span> cm²</div>
+              </div>
+            </div>
+          `,
+          answerAreaHTML: ``,
+          steps: `<strong>a)</strong> Luas penuh = ${pk.l} cm &times; ${pk.w} cm = <strong>${totalArea} cm²</strong> [N1]<br/><strong>b)</strong> Luas berlorek = ${fracHTML(pk.fn, pk.fd)} &times; ${totalArea} cm² [K1] = <strong>${shadedArea} cm²</strong> [N1]`,
+          ansHTML: `a) ${totalArea} cm² &nbsp;|&nbsp; b) ${shadedArea} cm²`,
+          note: 'Unit cm² wajib tepat.',
+          valid: Number.isInteger(shadedArea)
+        });
+      }
+
+      // ------------------------------------------------------------------------
+      // SOALAN 10 [3 markah] — 4 Corak Berbeza (Operasi Bergabung dengan Kurung)
+      // ------------------------------------------------------------------------
+      const p10 = pickNextPatternIndex('A10', 4, prefNum);
+      if (p10 === 0) {
+        const pk = randItem([
+          { mult: 18, a: 0.045, b: 0.205, op: '+' },
+          { mult: 24, a: 0.135, b: 0.24, op: '+' },
+          { mult: 22, a: 0.625, b: 0.275, op: '-' },
+          { mult: 15, a: 0.175, b: 0.225, op: '+' }
+        ]);
+        const br = Math.round((pk.op === '+' ? pk.a + pk.b : pk.a - pk.b) * 1000) / 1000;
+        const res = formatDecimal(pk.mult * br);
+        questions.push({
+          no: 10, marks: 3, topic: 'Operasi Bergabung Perpuluhan Juta',
+          bodyHTML: `
+            <div><strong>10.</strong> ${pk.mult} &times; ( ${pk.a} ${u} ${pk.op === '+' ? '+' : '&minus;'} ${pk.b} ${u} )
+              <div class="mt-1 pl-6">Beri jawapan dalam perpuluhan ${u}.</div>
+            </div>
+          `,
+          answerAreaHTML: `<div class="h-18"></div><div class="pl-6">Jawapan: <span class="dotted-line"></span> ${u}</div>`,
+          steps: `Dalam kurungan: ${pk.a} ${pk.op} ${pk.b} = ${br} ${u} [K1]<br/>Darabkan: ${pk.mult} &times; ${br} ${u} [K1] = ${res} ${u}`,
+          ansHTML: `${res} ${u}`,
+          note: 'Selesaikan dalam kurungan dahulu [N1].',
+          valid: true
+        });
+      } else if (p10 === 1) {
+        const presets = [
+          { a: 48500, b: 36700, div: 12, ans: 7100 },
+          { a: 64800, b: 29700, div: 15, ans: 6300 },
+          { a: 72400, b: 39200, div: 16, ans: 6975 }
+        ];
+        const pk = randItem(presets);
+        const sum = pk.a + pk.b;
+        questions.push({
+          no: 10, marks: 3, topic: 'Operasi Bergabung Nombor Bulat',
+          bodyHTML: `
+            <div><strong>10.</strong> Hitung nilai bagi:
+              <div class="mt-2 pl-6 text-[12pt]">( ${formatWhole(pk.a)} + ${formatWhole(pk.b)} ) &divide; ${pk.div} =</div>
+            </div>
+          `,
+          answerAreaHTML: `<div class="h-18"></div><div class="pl-6">Jawapan: <span class="dotted-line"></span></div>`,
+          steps: `Dalam kurungan: ${formatWhole(pk.a)} + ${formatWhole(pk.b)} = ${formatWhole(sum)} [K1]<br/>Bahagi: ${formatWhole(sum)} &divide; ${pk.div} [K1] = ${formatWhole(pk.ans)}`,
+          ansHTML: formatWhole(pk.ans),
+          note: 'Tertib operasi BODMAS [N1].',
+          valid: sum / pk.div === pk.ans
+        });
+      } else if (p10 === 2) {
+        const presets = [
+          { mult: 6, a: 145.80, b: 68.30, ans: 465.00 },
+          { mult: 8, a: 210.50, b: 84.25, ans: 1010.00 },
+          { mult: 5, a: 325.40, b: 148.90, ans: 882.50 }
+        ];
+        const pk = randItem(presets);
+        const diff = Math.round((pk.a - pk.b) * 100) / 100;
+        questions.push({
+          no: 10, marks: 3, topic: 'Operasi Bergabung Wang',
+          bodyHTML: `
+            <div><strong>10.</strong> Selesaikan:
+              <div class="mt-2 pl-6 text-[12pt]">${pk.mult} &times; ( ${formatRM(pk.a)} &minus; ${formatRM(pk.b)} ) =</div>
+            </div>
+          `,
+          answerAreaHTML: `<div class="h-18"></div><div class="pl-6">Jawapan: <span class="dotted-line"></span></div>`,
+          steps: `Dalam kurungan: ${formatRM(pk.a)} &minus; ${formatRM(pk.b)} = ${formatRM(diff)} [K1]<br/>Darab: ${pk.mult} &times; ${formatRM(diff)} [K1] = ${formatRM(pk.ans)}`,
+          ansHTML: formatRM(pk.ans),
+          note: 'Simbol RM dan titik perpuluhan sen wajib tepat [N1].',
+          valid: Math.abs(pk.mult * diff - pk.ans) < 0.01
+        });
+      } else {
+        const presets = [
+          { w: 3, n: 1, d: 4, dec: 1.75, mult: 14, ans: 70 },
+          { w: 2, n: 3, d: 5, dec: 1.4, mult: 16, ans: 64 },
+          { w: 4, n: 1, d: 2, dec: 2.25, mult: 12, ans: 81 }
+        ];
+        const pk = randItem(presets);
+        const br = pk.w + pk.n / pk.d + pk.dec;
+        questions.push({
+          no: 10, marks: 3, topic: 'Operasi Bergabung Pecahan & Perpuluhan',
+          bodyHTML: `
+            <div><strong>10.</strong> Hitung:
+              <div class="mt-2 pl-6 text-[12pt]">( ${mixedFracHTML(pk.w, pk.n, pk.d)} + ${pk.dec} ) &times; ${pk.mult} =</div>
+            </div>
+          `,
+          answerAreaHTML: `<div class="h-18"></div><div class="pl-6">Jawapan: <span class="dotted-line"></span></div>`,
+          steps: `Dalam kurungan: ${pk.w + pk.n / pk.d} + ${pk.dec} = ${br} [K1]<br/>Darab: ${br} &times; ${pk.mult} [K1] = ${pk.ans}`,
+          ansHTML: `${pk.ans}`,
+          note: 'Tukar pecahan kepada perpuluhan untuk memudahkan penambahan [N1].',
+          valid: br * pk.mult === pk.ans
+        });
+      }
+
+      // ------------------------------------------------------------------------
+      // SOALAN 11 [2 markah] — 4 Corak Berbeza (Tertib / Pola / Median & Julat)
+      // ------------------------------------------------------------------------
+      const p11 = pickNextPatternIndex('A11', 4, prefMix);
+      if (p11 === 0) {
+        const base = isY6 ? 3200000 : (isY5 ? 420000 : 42000);
+        const st = isY6 ? 1000 : (isY5 ? 100 : 10);
+        const nums = shuffleArray([14, 38, 62, 85]).map(x => base + x * st + 19);
+        const asc = Math.random() < 0.55;
+        const sorted = [...nums].sort((a, b) => asc ? a - b : b - a);
+        questions.push({
+          no: 11, marks: 2, topic: 'Tertib Nombor',
+          bodyHTML: `
+            <div><strong>11.</strong> Susun nombor berikut secara <strong>${asc ? 'tertib menaik' : 'tertib menurun'}</strong>.</div>
+            <div class="mt-4 flex justify-center gap-3 flex-wrap">
+              ${nums.map(n => `<div class="order-box">${formatWhole(n)}</div>`).join('')}
+            </div>
+          `,
+          answerAreaHTML: `
+            <div class="mt-5 flex justify-center gap-3 flex-wrap">
+              <div class="answer-order-box"></div><div class="answer-order-box"></div><div class="answer-order-box"></div><div class="answer-order-box"></div>
+            </div>
+          `,
+          steps: `Bandingkan nilai tempat dari kiri ke kanan mengikut ${asc ? 'tertib menaik' : 'tertib menurun'}.`,
+          ansHTML: sorted.map(n => formatWhole(n)).join(' , '),
+          note: 'Semua 4 nombor mesti dalam susunan tepat [N2].',
+          valid: true
+        });
+      } else if (p11 === 1) {
+        const presets = [
+          { seq: ['1.15 ' + u, '1.3 ' + u, 'P', '1.6 ' + u, 'Q'], p: '1.45 ' + u, q: '1.75 ' + u, rule: 'bertambah 0.15 ' + u },
+          { seq: ['12 500', '25 000', '50 000', 'P', 'Q'], p: '100 000', q: '200 000', rule: 'mendarab 2' },
+          { seq: ['4.8 ' + u, '4.55 ' + u, 'P', '4.05 ' + u, 'Q'], p: '4.3 ' + u, q: '3.8 ' + u, rule: 'berkurang 0.25 ' + u }
+        ];
+        const pk = randItem(presets);
+        questions.push({
+          no: 11, marks: 2, topic: 'Pola Nombor',
+          bodyHTML: `
+            <div><strong>11.</strong> Rajah di bawah menunjukkan satu urutan pola nombor. Tentukan nilai <strong>P</strong> dan <strong>Q</strong>.</div>
+            <div class="mt-4 flex justify-center gap-2.5 flex-wrap">
+              ${pk.seq.map(s => `<div class="order-box" style="min-width:94px;">${s}</div>`).join('')}
+            </div>
+          `,
+          answerAreaHTML: `
+            <div class="mt-4 pl-5 flex gap-10">
+              <div>P = <span class="dotted-line" style="min-width:120px;"></span></div>
+              <div>Q = <span class="dotted-line" style="min-width:120px;"></span></div>
+            </div>
+          `,
+          steps: `Pola nombor ini ialah <strong>${pk.rule}</strong>.<br/>P = ${pk.p} [N1] &nbsp;;&nbsp; Q = ${pk.q} [N1]`,
+          ansHTML: `P = ${pk.p} &nbsp;|&nbsp; Q = ${pk.q}`,
+          note: '1 markah bagi setiap nilai yang betul [N1 + N1].',
+          valid: true
+        });
+      } else if (p11 === 2) {
+        const presets = [
+          {
+            items: ['0.65', `${fracHTML(3, 5)}`, '68%', '0.58'],
+            sorted: `0.58 , ${fracHTML(3, 5)} , 0.65 , 68%`,
+            detail: '0.58 (58%), 3/5 (60%), 0.65 (65%), 68%'
+          },
+          {
+            items: ['75%', `${fracHTML(4, 5)}`, '0.72', '85%'],
+            sorted: `0.72 , 75% , ${fracHTML(4, 5)} , 85%`,
+            detail: '0.72 (72%), 75%, 4/5 (80%), 85%'
+          }
+        ];
+        const pk = randItem(presets);
+        const shuffled = shuffleArray(pk.items);
+        questions.push({
+          no: 11, marks: 2, topic: 'Tertib Pecahan, Perpuluhan & Peratus',
+          bodyHTML: `
+            <div><strong>11.</strong> Susun nilai-nilai berikut mengikut <strong>tertib menaik</strong>.</div>
+            <div class="mt-4 flex justify-center gap-3 flex-wrap">
+              ${shuffled.map(x => `<div class="order-box">${x}</div>`).join('')}
+            </div>
+          `,
+          answerAreaHTML: `
+            <div class="mt-5 flex justify-center gap-3 flex-wrap">
+              <div class="answer-order-box"></div><div class="answer-order-box"></div><div class="answer-order-box"></div><div class="answer-order-box"></div>
+            </div>
+          `,
+          steps: `Tukarkan kepada bentuk yang sama: ${pk.detail}`,
+          ansHTML: pk.sorted,
+          note: 'Susunan tepat dari nilai paling kecil ke paling besar [N2].',
+          valid: true
+        });
+      } else {
+        const presets = [
+          { raw: [18, 12, 25, 15, 22], sorted: [12, 15, 18, 22, 25], med: 18, rng: 13 },
+          { raw: [42, 35, 50, 38, 46], sorted: [35, 38, 42, 46, 50], med: 42, rng: 15 },
+          { raw: [64, 52, 78, 60, 70], sorted: [52, 60, 64, 70, 78], med: 64, rng: 26 }
+        ];
+        const pk = randItem(presets);
+        questions.push({
+          no: 11, marks: 2, topic: 'Pengurusan Data (Median & Julat)',
+          bodyHTML: `<div><strong>11.</strong> Skor markah lima orang peserta dalam satu kuiz ialah <strong>${pk.raw.join(', ')}</strong>. Nyatakan:</div>`,
+          answerAreaHTML: `
+            <div class="mt-4 pl-5 space-y-3">
+              <div>a) Median : <span class="dotted-line"></span></div>
+              <div>b) Julat &nbsp;&nbsp;&nbsp;&nbsp;: <span class="dotted-line"></span></div>
+            </div>
+          `,
+          steps: `Susun tertib menaik: ${pk.sorted.join(', ')}<br/>a) Median (nilai tengah) = <strong>${pk.med}</strong> [N1]<br/>b) Julat = ${pk.sorted[4]} &minus; ${pk.sorted[0]} = <strong>${pk.rng}</strong> [N1]`,
+          ansHTML: `a) ${pk.med} &nbsp;|&nbsp; b) ${pk.rng}`,
+          note: 'Susun data mengikut tertib dahulu sebelum mencari median [N1 + N1].',
+          valid: pk.sorted[4] - pk.sorted[0] === pk.rng
+        });
+      }
+
+      // ------------------------------------------------------------------------
+      // SOALAN 12 [2 markah] — 4 Corak Berbeza (Penyelesaian Masalah 1)
+      // ------------------------------------------------------------------------
+      const p12 = pickNextPatternIndex('A12', 4, prefMix);
+      if (p12 === 0) {
+        const ctx = randItem([
+          { kilang: 'Sebuah kilang makanan', objek: 'paket biskut' },
+          { kilang: 'Sebuah kilang tekstil', objek: 'helai baju sukan' },
+          { kilang: 'Sebuah kilang alat tulis', objek: 'batang pensel warna' }
+        ]);
+        const totDec = randItem([0.875, 0.925, 0.96, 0.84]);
+        const expF = randItem([{ n: 3, d: 5 }, { n: 1, d: 2 }, { n: 5, d: 8 }, { n: 3, d: 4 }]);
+        const totW = Math.round(totDec * scale);
+        const expW = Math.round((expF.n / expF.d) * scale);
+        const locW = totW - expW;
+        questions.push({
+          no: 12, marks: 2, topic: 'Masalah Baki Pengeluaran',
+          bodyHTML: `<div class="leading-relaxed"><strong>12.</strong> ${ctx.kilang} menghasilkan ${totDec} ${u} ${ctx.objek}. Sebanyak ${fracHTML(expF.n, expF.d)} ${u} ${ctx.objek} dieksport dan bakinya dijual di pasaran tempatan. Hitung bilangan ${ctx.objek} yang dijual di pasaran tempatan. Berikan jawapan dalam nombor bulat.</div>`,
+          answerAreaHTML: `<div class="h-20"></div><div class="pl-6">Jawapan: <span class="dotted-line"></span></div>`,
+          steps: `Jumlah = ${formatWhole(totW)} &nbsp;;&nbsp; Eksport = ${formatWhole(expW)}<br/>Pasaran tempatan = ${formatWhole(totW)} &minus; ${formatWhole(expW)} [K1] = ${formatWhole(locW)}`,
+          ansHTML: formatWhole(locW),
+          note: 'Jawapan dalam nombor bulat [N1].',
+          valid: locW > 0
+        });
+      } else if (p12 === 1) {
+        const presets = [
+          { item: 'sebuah basikal', orig: 480, discPct: 15, discAmt: 72, finalPrice: 408 },
+          { item: 'sepasang kasut sukan', orig: 320, discPct: 20, discAmt: 64, finalPrice: 256 },
+          { item: 'sebuah jam tangan pintar', orig: 550, discPct: 10, discAmt: 55, finalPrice: 495 }
+        ];
+        const pk = randItem(presets);
+        questions.push({
+          no: 12, marks: 2, topic: 'Wang (Diskaun)',
+          bodyHTML: `<div class="leading-relaxed"><strong>12.</strong> Harga asal bagi ${pk.item} ialah <strong>${formatRM(pk.orig)}</strong>. Sempena jualan murah, diskaun sebanyak <strong>${pk.discPct}%</strong> diberikan. Hitung harga ${pk.item} itu selepas diskaun.</div>`,
+          answerAreaHTML: `<div class="h-20"></div><div class="pl-6">Jawapan: <span class="dotted-line"></span></div>`,
+          steps: `Diskaun = ${pk.discPct}% &times; ${formatRM(pk.orig)} = ${formatRM(pk.discAmt)} [K1]<br/>Harga selepas diskaun = ${formatRM(pk.orig)} &minus; ${formatRM(pk.discAmt)} = ${formatRM(pk.finalPrice)}`,
+          ansHTML: formatRM(pk.finalPrice),
+          note: 'Simbol RM wajib ditulis [N1].',
+          valid: pk.orig - pk.discAmt === pk.finalPrice
+        });
+      } else if (p12 === 2) {
+        const presets = [
+          { lit: 4.8, glasses: 12, mlEach: 400 },
+          { lit: 5.4, glasses: 15, mlEach: 360 },
+          { lit: 6.3, glasses: 18, mlEach: 350 }
+        ];
+        const pk = randItem(presets);
+        questions.push({
+          no: 12, marks: 2, topic: 'Sukatan Isi Padu Cecair',
+          bodyHTML: `<div class="leading-relaxed"><strong>12.</strong> Sebekas jus oren mengandungi <strong>${pk.lit} ℓ</strong> jus. Jus itu dituang sama banyak ke dalam <strong>${pk.glasses}</strong> biji gelas. Hitung isi padu, dalam <strong>mℓ</strong>, jus oren di dalam setiap gelas.</div>`,
+          answerAreaHTML: `<div class="h-20"></div><div class="pl-6">Jawapan: <span class="dotted-line"></span> mℓ</div>`,
+          steps: `${pk.lit} ℓ = ${pk.lit * 1000} mℓ<br/>Isi padu setiap gelas = ${pk.lit * 1000} mℓ &divide; ${pk.glasses} [K1] = ${pk.mlEach} mℓ`,
+          ansHTML: `${pk.mlEach} mℓ`,
+          note: '1 ℓ = 1 000 mℓ [N1].',
+          valid: Math.round((pk.lit * 1000) / pk.glasses) === pk.mlEach
+        });
+      } else {
+        const presets = [
+          { w: 6, n: 3, d: 4, cutN: 3, cutD: 4, pieces: 9 },
+          { w: 7, n: 1, d: 2, cutN: 3, cutD: 4, pieces: 10 },
+          { w: 5, n: 1, d: 4, cutN: 3, cutD: 8, pieces: 14 }
+        ];
+        const pk = randItem(presets);
+        questions.push({
+          no: 12, marks: 2, topic: 'Masalah Bahagi Pecahan Panjang',
+          bodyHTML: `<div class="leading-relaxed"><strong>12.</strong> Puan Salmah mempunyai segulung reben sepanjang <strong>${mixedFracHTML(pk.w, pk.n, pk.d)} m</strong>. Beliau memotong reben itu kepada beberapa bahagian yang sama panjang, iaitu <strong>${fracHTML(pk.cutN, pk.cutD)} m</strong> setiap satu. Berapakah bilangan potongan reben yang diperoleh?</div>`,
+          answerAreaHTML: `<div class="h-20"></div><div class="pl-6">Jawapan: <span class="dotted-line"></span> potongan</div>`,
+          steps: `${mixedFracHTML(pk.w, pk.n, pk.d)} &divide; ${fracHTML(pk.cutN, pk.cutD)} = ${fracHTML(pk.w * pk.d + pk.n, pk.d)} &times; ${fracHTML(pk.cutD, pk.cutN)} [K1] = ${pk.pieces}`,
+          ansHTML: `${pk.pieces} potongan`,
+          note: 'Jawapan tepat [N1].',
+          valid: true
+        });
+      }
+
+      // ------------------------------------------------------------------------
+      // SOALAN 13 [2 markah] — 4 Corak Berbeza (Penyelesaian Masalah 2)
+      // ------------------------------------------------------------------------
+      const p13 = pickNextPatternIndex('A13', 4, prefMix);
+      if (p13 === 0) {
+        const place = randItem(['Muzium Negara', 'Taman Negara Pahang', 'Pusat Sains Negara', 'Zoo Melaka']);
+        const f = randItem([{ w: 1, n: 3, d: 4 }, { w: 2, n: 1, d: 2 }, { w: 2, n: 3, d: 5 }]);
+        const inc = randItem([0.35, 0.45, 0.65]);
+        const lastW = Math.round((f.w + f.n / f.d) * scale);
+        const incW = Math.round(inc * scale);
+        const tot = lastW + incW;
+        questions.push({
+          no: 13, marks: 2, topic: 'Masalah Peningkatan Pengunjung',
+          bodyHTML: `<div class="leading-relaxed"><strong>13.</strong> Seramai ${mixedFracHTML(f.w, f.n, f.d)} ${u} orang telah mengunjungi ${place} pada tahun lepas. Pada tahun ini, bilangan pengunjung dijangka meningkat sebanyak ${inc} ${u} orang. Hitung jangkaan bilangan pengunjung pada tahun ini.</div>`,
+          answerAreaHTML: `<div class="h-20"></div><div class="pl-6">Jawapan: <span class="dotted-line"></span></div>`,
+          steps: `Tahun lepas = ${formatWhole(lastW)} &nbsp;;&nbsp; Peningkatan = ${formatWhole(incW)}<br/>Jangkaan = ${formatWhole(lastW)} + ${formatWhole(incW)} [K1] = ${formatWhole(tot)}`,
+          ansHTML: formatWhole(tot),
+          note: 'Terima juga bentuk perpuluhan ' + u + ' yang setara [N1].',
+          valid: lastW + incW === tot
+        });
+      } else if (p13 === 1) {
+        const presets = [
+          { item: 'sebuah meja belajar', cost: 240, profitPct: 25, profit: 60, sell: 300 },
+          { item: 'sebuah kerusi pejabat', cost: 360, profitPct: 15, profit: 54, sell: 414 },
+          { item: 'sebuah rak buku', cost: 180, profitPct: 30, profit: 54, sell: 234 }
+        ];
+        const pk = randItem(presets);
+        questions.push({
+          no: 13, marks: 2, topic: 'Wang (Harga Kos & Keuntungan)',
+          bodyHTML: `<div class="leading-relaxed"><strong>13.</strong> Harga kos bagi ${pk.item} ialah <strong>${formatRM(pk.cost)}</strong>. Seorang peniaga menjual barang itu dan mendapat keuntungan sebanyak <strong>${pk.profitPct}%</strong> daripada harga kos. Hitung harga jual ${pk.item} itu.</div>`,
+          answerAreaHTML: `<div class="h-20"></div><div class="pl-6">Jawapan: <span class="dotted-line"></span></div>`,
+          steps: `Keuntungan = ${pk.profitPct}% &times; ${formatRM(pk.cost)} = ${formatRM(pk.profit)} [K1]<br/>Harga jual = ${formatRM(pk.cost)} + ${formatRM(pk.profit)} = ${formatRM(pk.sell)}`,
+          ansHTML: formatRM(pk.sell),
+          note: 'Harga jual = Harga kos + Untung [N1].',
+          valid: pk.cost + pk.profit === pk.sell
+        });
+      } else if (p13 === 2) {
+        const presets = [
+          { km: 3.65, days: 5, totalKm: 36.5 },
+          { km: 4.25, days: 4, totalKm: 34 },
+          { km: 2.85, days: 6, totalKm: 34.2 }
+        ];
+        const pk = randItem(presets);
+        questions.push({
+          no: 13, marks: 2, topic: 'Sukatan Panjang (Jarak)',
+          bodyHTML: `<div class="leading-relaxed"><strong>13.</strong> Jarak dari rumah Hafiz ke sekolah ialah <strong>${pk.km} km</strong>. Dia berulang-alik dari rumah ke sekolah setiap hari selama <strong>${pk.days} hari</strong>. Hitung jumlah jarak, dalam <strong>km</strong>, yang dilalui oleh Hafiz.</div>`,
+          answerAreaHTML: `<div class="h-20"></div><div class="pl-6">Jawapan: <span class="dotted-line"></span> km</div>`,
+          steps: `Jarak sehari (ulang-alik) = 2 &times; ${pk.km} km = ${formatDecimal(pk.km * 2)} km [K1]<br/>Jumlah ${pk.days} hari = ${formatDecimal(pk.km * 2)} km &times; ${pk.days} = ${pk.totalKm} km`,
+          ansHTML: `${pk.totalKm} km`,
+          note: 'Ulang-alik bermaksud perjalanan pergi dan balik (× 2) [N1].',
+          valid: Math.abs(pk.km * 2 * pk.days - pk.totalKm) < 0.001
+        });
+      } else {
+        const presets = [
+          { start: '0920', durH: 4, durM: 45, end: '1405' },
+          { start: '0835', durH: 3, durM: 50, end: '1225' },
+          { start: '1040', durH: 2, durM: 45, end: '1325' }
+        ];
+        const pk = randItem(presets);
+        questions.push({
+          no: 13, marks: 2, topic: 'Masa & Waktu (Sistem 24 Jam)',
+          bodyHTML: `<div class="leading-relaxed"><strong>13.</strong> Sebuah bas ekspres bertolak dari Shah Alam pada <strong>Jam ${pk.start}</strong>. Tempoh perjalanan ke destinasi ialah <strong>${pk.durH} jam ${pk.durM} minit</strong>. Nyatakan waktu bas itu tiba dalam sistem 24 jam.</div>`,
+          answerAreaHTML: `<div class="h-20"></div><div class="pl-6">Jawapan: <span class="dotted-line"></span></div>`,
+          steps: `Jam ${pk.start} + ${pk.durH} jam ${pk.durM} minit [K1] = <strong>Jam ${pk.end}</strong>`,
+          ansHTML: `Jam ${pk.end}`,
+          note: 'Terima "Jam ' + pk.end + '" atau "' + pk.end + '" [N1].',
+          valid: true
+        });
+      }
+
+      return questions;
+    }
+
+    /**
+     * ==========================================================================
+     * ENJIN PENJANA SOALAN BERSTRUKTUR BAHAGIAN B (2 SOALAN BESAR = 24 MARKAH)
+     * Setiap Soalan Besar mempunyai 4 sub-soalan (a, b, c, d) × 3 markah = 12m
+     * ==========================================================================
+     */
+    function buildBahagianB(yearLevel, focusMode) {
+      const isY6 = yearLevel === 6;
+      const isY5 = yearLevel === 5;
+      const scale = isY6 ? 1000000 : (isY5 ? 100000 : 10000);
+      const u = isY6 ? 'juta' : (isY5 ? 'ratus ribu' : 'puluh ribu');
+      const scText = formatWhole(scale);
+
+      const prefB1 = focusMode === 'MATEMATIK_NOMBOR' ? [0, 1] : (focusMode === 'MATEMATIK_SUKATAN_DATA' ? [2, 1] : null);
+      const prefB2 = focusMode === 'MATEMATIK_NOMBOR' ? [0, 2] : (focusMode === 'MATEMATIK_SUKATAN_DATA' ? [1, 2] : null);
+
+      // ========================================================================
+      // SOALAN 1 BAHAGIAN B [12 markah] — 3 Tema Berlainan
+      // ========================================================================
+      const b1Theme = pickNextPatternIndex('B1', 3, prefB1);
+      let b1 = null;
+
+      if (b1Theme === 0) {
+        const comp = randItem([
+          { name: 'Syarikat Elektronik Cahaya', short: 'syarikat elektronik tersebut', items: ['Papan kekunci', 'Pencetak laser', 'Tetikus tanpa wayar', 'Komputer riba'], subTitle: 'Jenis Komputer Riba', subA: 'Model Alpha', subB: 'Model Beta' },
+          { name: 'Syarikat Peranti Pintar Timur', short: 'syarikat peranti tersebut', items: ['Jam pintar', 'Pembesar suara', 'Fon telinga', 'Tablet pintar'], subTitle: 'Jenis Tablet Pintar', subA: 'Siri Pro', subB: 'Siri Lite' }
+        ]);
+        const p = randItem([
+          { item1: 0.325 * scale, mult: 4, perBox: 25, item2Dec: 1.16, item4W: 1, item4N: 2, item4D: 5, subARatio: 0.58, nextOrderDec: 0.425 },
+          { item1: 0.25 * scale, mult: 6, perBox: 30, item2Dec: 1.24, item4W: 1, item4N: 3, item4D: 4, subARatio: 0.52, nextOrderDec: 0.375 }
+        ]);
+        const item1W = Math.round(p.item1);
+        const item3W = item1W * p.mult;
+        const item3Dec = formatDecimal(item3W / scale);
+        const item4W = Math.round((p.item4W + p.item4N / p.item4D) * scale);
+        const subAW = Math.round(item4W * p.subARatio);
+        const subBW = item4W - subAW;
+        const boxesW = Math.round(item3W / p.perBox);
+        const boxesDec = formatDecimal(boxesW / scale);
+        const nextOrdW = Math.round(p.nextOrderDec * scale);
+        const nextYrW = item1W + nextOrdW;
+        const dW = Math.floor(nextYrW / scale);
+        const dRem = nextYrW % scale;
+        const dG = dRem === 0 ? 1 : gcd(dRem, scale);
+        const dNum = dRem === 0 ? 0 : dRem / dG;
+        const dDen = dRem === 0 ? 1 : scale / dG;
+
+        b1 = {
+          themeName: 'Pengeluaran & Pembungkusan (Nombor Juta)',
+          page6HTML: `
+            <div class="text-[11.5pt]">
+              <div><strong>1.</strong> Rajah 4 menunjukkan empat jenis barang yang dikeluarkan oleh ${comp.name}.</div>
+              <div class="mt-2 flex flex-col items-center">
+                <table class="exam-table w-full text-[10.5pt]">
+                  <thead>
+                    <tr class="font-bold">
+                      <th class="w-1/4">${comp.items[0]}</th>
+                      <th class="w-1/4">${comp.items[1]}</th>
+                      <th class="w-1/4">${comp.items[2]}</th>
+                      <th class="w-1/4">${comp.items[3]}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td>${formatWhole(item1W)}</td>
+                      <td>${p.item2Dec} ${u}</td>
+                      <td>${p.mult} kali jumlah<br/>${comp.items[0].toLowerCase()}</td>
+                      <td>${mixedFracHTML(p.item4W, p.item4N, p.item4D)} ${u}</td>
+                    </tr>
+                  </tbody>
+                </table>
+                <div class="text-[10.5pt] font-bold">Rajah 4</div>
+              </div>
+
+              <div class="mt-3 pl-4">
+                <div class="flex justify-between items-start gap-3">
+                  <div>(a) Berapakah jumlah ${comp.items[2].toLowerCase()} yang dihasilkan oleh ${comp.short}? Nyatakan jawapan dalam perpuluhan ${u}.</div>
+                  <div class="font-bold shrink-0">[3 markah]</div>
+                </div>
+                <div class="h-16"></div>
+                <div class="pl-5">Jawapan: <span class="dotted-line"></span> ${u}</div>
+              </div>
+
+              <div class="mt-4 pl-4">
+                <div class="flex justify-between items-start gap-3">
+                  <div>(b) Jadual di bawah menunjukkan jenis ${comp.items[3].toLowerCase()} yang dikeluarkan. Bilangan ${comp.items[3].toLowerCase()} ${comp.subB} tidak ditunjukkan. Hitung bilangan ${comp.items[3].toLowerCase()} ${comp.subB} berdasarkan jumlah ${comp.items[3].toLowerCase()} yang dikeluarkan oleh ${comp.name}.</div>
+                  <div class="font-bold shrink-0">[3 markah]</div>
+                </div>
+                <div class="mt-2 flex justify-center">
+                  <table class="exam-table w-80">
+                    <thead><tr class="font-bold"><th>${comp.subTitle}</th><th>Bilangan</th></tr></thead>
+                    <tbody>
+                      <tr><td>${comp.subA}</td><td>${formatWhole(subAW)}</td></tr>
+                      <tr><td>${comp.subB}</td><td></td></tr>
+                    </tbody>
+                  </table>
+                </div>
+                <div class="h-14"></div>
+                <div class="pl-5">Jawapan: <span class="dotted-line"></span></div>
+              </div>
+            </div>
+          `,
+          page7HTML: `
+            <div class="mt-4 pl-4 text-[11.5pt]">
+              <div class="mb-7">
+                <div class="flex justify-between items-start gap-3">
+                  <div>(c) Rajah 5 menunjukkan bilangan ${comp.items[2].toLowerCase()} yang dapat dimasukkan ke dalam sebuah kotak. Berapakah jumlah kotak yang diperlukan oleh ${comp.name} untuk mengisi keseluruhan ${comp.items[2].toLowerCase()} itu? Jawapan dalam perpuluhan ${u}.</div>
+                  <div class="font-bold shrink-0">[3 markah]</div>
+                </div>
+                <div class="mt-3 flex flex-col items-center">
+                  <div class="border-[1.5px] border-black px-8 py-3 flex items-center justify-center gap-8 bg-white">
+                    <svg width="115" height="78" viewBox="0 0 120 82" fill="none" stroke="#000" stroke-width="1.6">
+                      <polygon points="15,24 55,10 105,22 65,36" fill="#fff" />
+                      <polygon points="15,24 65,36 65,74 15,60" fill="#fff" />
+                      <polygon points="65,36 105,22 105,60 65,74" fill="#fff" />
+                      <line x1="15" y1="31" x2="65" y2="43" />
+                      <line x1="65" y1="43" x2="105" y2="29" />
+                    </svg>
+                    <div class="flex flex-col items-center">
+                      <svg width="44" height="42" viewBox="0 0 46 44" fill="none" stroke="#000" stroke-width="1.5">
+                        <rect x="11" y="14" width="24" height="26" rx="11" fill="#fff" />
+                        <line x1="23" y1="14" x2="23" y2="24" />
+                        <line x1="11" y1="24" x2="35" y2="24" />
+                        <path d="M23 14 C23 7, 32 7, 32 3" />
+                      </svg>
+                      <span class="font-bold text-[11pt] mt-1">${p.perBox} unit</span>
+                    </div>
+                  </div>
+                  <div class="text-[10.5pt] font-bold mt-1">Rajah 5</div>
+                </div>
+                <div class="h-20"></div>
+                <div class="pl-5">Jawapan: <span class="dotted-line"></span> ${u} kotak</div>
+              </div>
+
+              <div class="mb-4">
+                <div class="flex justify-between items-start gap-3">
+                  <div class="leading-relaxed">(d) ${comp.name} juga mengeluarkan ${formatWhole(item1W)} ${comp.items[0].toLowerCase()} pada tahun ini. Pada tahun hadapan, syarikat tersebut telah menerima tempahan sebanyak ${p.nextOrderDec} ${u} lagi. Hitung jumlah ${comp.items[0].toLowerCase()} yang dikeluarkan oleh syarikat tersebut pada tahun hadapan. Berikan jawapan dalam pecahan ${u}.</div>
+                  <div class="font-bold shrink-0">[3 markah]</div>
+                </div>
+                <div class="h-28"></div>
+                <div class="pl-5">Jawapan: <span class="dotted-line"></span> ${u}</div>
+              </div>
+            </div>
+          `,
+          schemes: [
+            { no: '1(a)', marks: '3 markah', steps: `${p.mult} &times; ${formatWhole(item1W)} [K1] = ${formatWhole(item3W)} [K1]<br/>Dalam perpuluhan ${u}: ${formatWhole(item3W)} &divide; ${scText} = ${item3Dec} ${u}`, ans: `${item3Dec} ${u}` },
+            { no: '1(b)', marks: '3 markah', steps: `Jumlah ${comp.items[3]} = ${formatWhole(item4W)} [K1]<br/>${comp.subB} = ${formatWhole(item4W)} &minus; ${formatWhole(subAW)} [K1] = ${formatWhole(subBW)}`, ans: formatWhole(subBW) },
+            { no: '1(c)', marks: '3 markah', steps: `Bilangan kotak = ${formatWhole(item3W)} &divide; ${p.perBox} [K1] = ${formatWhole(boxesW)} kotak [K1]<br/>Dalam perpuluhan ${u}: ${boxesDec} ${u} kotak`, ans: `${boxesDec} ${u} kotak` },
+            { no: '1(d)', marks: '3 markah', steps: `Tempahan = ${formatWhole(nextOrdW)} &rarr; Jumlah = ${formatWhole(item1W)} + ${formatWhole(nextOrdW)} [K1] = ${formatWhole(nextYrW)} [K1]<br/>Dalam pecahan ${u}: ${mixedFracHTML(dW, dNum, dDen)} ${u}`, ans: `${mixedFracHTML(dW, dNum, dDen)} ${u}` }
+          ],
+          valid: item1W * p.mult === item3W && subAW + subBW === item4W && boxesW * p.perBox === item3W
+        };
+      } else if (b1Theme === 1) {
+        const pk = randItem([
+          { shop: 'Kedai Sukan Juara', items: [
+            { name: 'Raket badminton', cost: 160, sell: 200 },
+            { name: 'Kasut futsal', cost: 240, sell: 300 },
+            { name: 'Beg sukan', cost: 120, sell: 150 }
+          ], qtyA: 15, discPct: 20, qtyB: 4, paid: 1000 },
+          { shop: 'Pusat Peralatan Pejabat Prisma', items: [
+            { name: 'Kerusi ergonomik', cost: 320, sell: 400 },
+            { name: 'Meja komputer', cost: 400, sell: 500 },
+            { name: 'Lampu meja LED', cost: 80, sell: 100 }
+          ], qtyA: 12, discPct: 15, qtyB: 3, paid: 1500 }
+        ]);
+        const profitPerA = pk.items[0].sell - pk.items[0].cost;
+        const totProfitA = profitPerA * pk.qtyA;
+
+        const discPerB = (pk.items[1].sell * pk.discPct) / 100;
+        const afterDiscB = pk.items[1].sell - discPerB;
+        const totCostB = afterDiscB * pk.qtyB;
+
+        const balancePaid = pk.paid - totCostB;
+        const profitC = pk.items[2].sell - pk.items[2].cost;
+        const profitPctC = Math.round((profitC / pk.items[2].cost) * 100);
+
+        b1 = {
+          themeName: 'Perniagaan, Diskaun & Keuntungan (Wang)',
+          page6HTML: `
+            <div class="text-[11.5pt]">
+              <div><strong>1.</strong> Rajah 4 menunjukkan harga kos dan harga jual bagi tiga jenis barang di <strong>${pk.shop}</strong>.</div>
+              <div class="mt-2 flex flex-col items-center">
+                <table class="exam-table w-full text-[10.5pt]">
+                  <thead>
+                    <tr class="font-bold">
+                      <th>Jenis Barang</th>
+                      <th>Harga Kos Seunit</th>
+                      <th>Harga Jual Seunit</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${pk.items.map(it => `
+                      <tr>
+                        <td class="font-bold">${it.name}</td>
+                        <td>${formatRM(it.cost)}</td>
+                        <td>${formatRM(it.sell)}</td>
+                      </tr>
+                    `).join('')}
+                  </tbody>
+                </table>
+                <div class="text-[10.5pt] font-bold">Rajah 4</div>
+              </div>
+
+              <div class="mt-3 pl-4">
+                <div class="flex justify-between items-start gap-3">
+                  <div>(a) ${pk.shop} berjaya menjual sebanyak <strong>${pk.qtyA} unit</strong> ${pk.items[0].name.toLowerCase()} pada minggu ini. Hitung jumlah keuntungan yang diperoleh daripada jualan tersebut.</div>
+                  <div class="font-bold shrink-0">[3 markah]</div>
+                </div>
+                <div class="h-16"></div>
+                <div class="pl-5">Jawapan: <span class="dotted-line"></span></div>
+              </div>
+
+              <div class="mt-4 pl-4">
+                <div class="flex justify-between items-start gap-3">
+                  <div>(b) Sempena promosi hujung minggu, diskaun sebanyak <strong>${pk.discPct}%</strong> diberikan bagi pembelian ${pk.items[1].name.toLowerCase()}. Encik Kamal membeli <strong>${pk.qtyB} unit</strong> ${pk.items[1].name.toLowerCase()} tersebut. Hitung jumlah harga yang perlu dibayar oleh Encik Kamal selepas diskaun.</div>
+                  <div class="font-bold shrink-0">[3 markah]</div>
+                </div>
+                <div class="h-24"></div>
+                <div class="pl-5">Jawapan: <span class="dotted-line"></span></div>
+              </div>
+            </div>
+          `,
+          page7HTML: `
+            <div class="mt-4 pl-4 text-[11.5pt]">
+              <div class="mb-7">
+                <div class="flex justify-between items-start gap-3">
+                  <div>(c) Rajah 5 menunjukkan wang tunai yang dibayar oleh Encik Kamal di kaunter pembayaran bagi pembelian di 1(b). Hitung baki wang yang diterima oleh Encik Kamal.</div>
+                  <div class="font-bold shrink-0">[3 markah]</div>
+                </div>
+                <div class="mt-3 flex flex-col items-center">
+                  <div class="border-[1.6px] border-black px-8 py-4 bg-white text-center">
+                    <div class="text-[10pt] uppercase tracking-wider font-bold">Jumlah Wang Tunai Dibayar</div>
+                    <div class="text-[15pt] font-bold mt-1">${formatRM(pk.paid)}</div>
+                  </div>
+                  <div class="text-[10.5pt] font-bold mt-1">Rajah 5</div>
+                </div>
+                <div class="h-24"></div>
+                <div class="pl-5">Jawapan: <span class="dotted-line"></span></div>
+              </div>
+
+              <div class="mb-4">
+                <div class="flex justify-between items-start gap-3">
+                  <div class="leading-relaxed">(d) Hitung <strong>peratus keuntungan</strong> bagi jualan seunit ${pk.items[2].name.toLowerCase()} berdasarkan harga kos dan harga jual dalam Rajah 4.</div>
+                  <div class="font-bold shrink-0">[3 markah]</div>
+                </div>
+                <div class="h-28"></div>
+                <div class="pl-5">Jawapan: <span class="dotted-line"></span> %</div>
+              </div>
+            </div>
+          `,
+          schemes: [
+            { no: '1(a)', marks: '3 markah', steps: `Untung seunit = ${formatRM(pk.items[0].sell)} &minus; ${formatRM(pk.items[0].cost)} = ${formatRM(profitPerA)} [K1]<br/>Jumlah untung = ${pk.qtyA} &times; ${formatRM(profitPerA)} [K1] = ${formatRM(totProfitA)}`, ans: formatRM(totProfitA) },
+            { no: '1(b)', marks: '3 markah', steps: `Diskaun seunit = ${pk.discPct}% &times; ${formatRM(pk.items[1].sell)} = ${formatRM(discPerB)} [K1]<br/>Harga selepas diskaun = ${formatRM(afterDiscB)} &rarr; ${pk.qtyB} unit = ${pk.qtyB} &times; ${formatRM(afterDiscB)} [K1] = ${formatRM(totCostB)}`, ans: formatRM(totCostB) },
+            { no: '1(c)', marks: '3 markah', steps: `Baki wang = ${formatRM(pk.paid)} &minus; ${formatRM(totCostB)} [K2] = ${formatRM(balancePaid)}`, ans: formatRM(balancePaid) },
+            { no: '1(d)', marks: '3 markah', steps: `Untung seunit = ${formatRM(pk.items[2].sell)} &minus; ${formatRM(pk.items[2].cost)} = ${formatRM(profitC)} [K1]<br/>Peratus untung = ${fracHTML(profitC, pk.items[2].cost)} &times; 100% [K1] = ${profitPctC}%`, ans: `${profitPctC}%` }
+          ],
+          valid: totProfitA > 0 && balancePaid > 0 && profitPctC === 25
+        };
+      } else {
+        const pk = randItem([
+          { l1: 18, w1: 12, l2: 10, w2: 8, poolL: 8, poolW: 5, poolH: 2, fenceRate: 35 },
+          { l1: 20, w1: 14, l2: 12, w2: 8, poolL: 10, poolW: 6, poolH: 2, fenceRate: 40 }
+        ]);
+        const perim = 2 * (pk.l1 + pk.l2) + 2 * pk.w1;
+        const area1 = pk.l1 * pk.w1;
+        const area2 = pk.l2 * pk.w2;
+        const totalArea = area1 + area2;
+        const poolVol = pk.poolL * pk.poolW * pk.poolH;
+        const fenceCost = perim * pk.fenceRate;
+
+        b1 = {
+          themeName: 'Ruang: Perimeter, Luas & Isi Padu',
+          page6HTML: `
+            <div class="text-[11.5pt]">
+              <div><strong>1.</strong> Rajah 4 menunjukkan pelan sebuah taman permainan yang merupakan gabungan dua buah segi empat tepat.</div>
+              <div class="mt-2 flex flex-col items-center">
+                <svg width="260" height="105" viewBox="0 0 260 105">
+                  <polygon points="35,14 145,14 145,46 215,46 215,92 35,92" fill="#fff" stroke="#000" stroke-width="1.6" />
+                  <line x1="145" y1="46" x2="145" y2="92" stroke="#000" stroke-width="1.1" stroke-dasharray="4,3" />
+                  <text x="90" y="11" text-anchor="middle" font-size="10" font-weight="bold">${pk.l1} m</text>
+                  <text x="18" y="55" text-anchor="middle" font-size="10" font-weight="bold">${pk.w1} m</text>
+                  <text x="180" y="42" text-anchor="middle" font-size="10" font-weight="bold">${pk.l2} m</text>
+                  <text x="233" y="72" text-anchor="middle" font-size="10" font-weight="bold">${pk.w2} m</text>
+                </svg>
+                <div class="text-[10.5pt] font-bold">Rajah 4</div>
+              </div>
+
+              <div class="mt-2.5 pl-4">
+                <div class="flex justify-between items-start gap-3">
+                  <div>(a) Hitung <strong>perimeter</strong>, dalam m, seluruh taman permainan tersebut.</div>
+                  <div class="font-bold shrink-0">[3 markah]</div>
+                </div>
+                <div class="h-16"></div>
+                <div class="pl-5">Jawapan: <span class="dotted-line"></span> m</div>
+              </div>
+
+              <div class="mt-4 pl-4">
+                <div class="flex justify-between items-start gap-3">
+                  <div>(b) Seluruh kawasan taman permainan itu akan ditanam dengan rumput hiasan. Hitung <strong>luas</strong>, dalam m², kawasan yang akan ditanam rumput hiasan itu.</div>
+                  <div class="font-bold shrink-0">[3 markah]</div>
+                </div>
+                <div class="h-24"></div>
+                <div class="pl-5">Jawapan: <span class="dotted-line"></span> m²</div>
+              </div>
+            </div>
+          `,
+          page7HTML: `
+            <div class="mt-4 pl-4 text-[11.5pt]">
+              <div class="mb-7">
+                <div class="flex justify-between items-start gap-3">
+                  <div>(c) Rajah 5 menunjukkan sebuah kolam takungan air berbentuk kuboid yang dibina di taman itu. Hitung <strong>isi padu</strong>, dalam m³, air di dalam kolam itu apabila diisi penuh.</div>
+                  <div class="font-bold shrink-0">[3 markah]</div>
+                </div>
+                <div class="mt-3 flex flex-col items-center">
+                  <svg width="210" height="92" viewBox="0 0 210 92" fill="none" stroke="#000" stroke-width="1.5">
+                    <polygon points="30,32 70,12 175,12 135,32" fill="#fff" />
+                    <polygon points="30,32 135,32 135,70 30,70" fill="#fff" />
+                    <polygon points="135,32 175,12 175,50 135,70" fill="#fff" />
+                    <text x="82" y="83" text-anchor="middle" font-size="10" font-weight="bold" fill="#000" stroke="none">${pk.poolL} m</text>
+                    <text x="166" y="67" text-anchor="middle" font-size="10" font-weight="bold" fill="#000" stroke="none">${pk.poolW} m</text>
+                    <text x="190" y="34" text-anchor="middle" font-size="10" font-weight="bold" fill="#000" stroke="none">${pk.poolH} m</text>
+                  </svg>
+                  <div class="text-[10.5pt] font-bold mt-1">Rajah 5</div>
+                </div>
+                <div class="h-20"></div>
+                <div class="pl-5">Jawapan: <span class="dotted-line"></span> m³</div>
+              </div>
+
+              <div class="mb-4">
+                <div class="flex justify-between items-start gap-3">
+                  <div class="leading-relaxed">(d) Pihak pengurusan taman ingin memasang pagar di sekeliling taman permainan pada Rajah 4. Kos pemasangan pagar ialah <strong>${formatRM(pk.fenceRate)}</strong> bagi setiap meter. Hitung jumlah kos pemasangan pagar tersebut.</div>
+                  <div class="font-bold shrink-0">[3 markah]</div>
+                </div>
+                <div class="h-28"></div>
+                <div class="pl-5">Jawapan: <span class="dotted-line"></span></div>
+              </div>
+            </div>
+          `,
+          schemes: [
+            { no: '1(a)', marks: '3 markah', steps: `Sisi bawah = ${pk.l1} + ${pk.l2} = ${pk.l1 + pk.l2} m ; Sisi tegak tengah = ${pk.w1} &minus; ${pk.w2} = ${pk.w1 - pk.w2} m [K1]<br/>Perimeter = ${pk.w1} + ${pk.l1} + ${pk.w1 - pk.w2} + ${pk.l2} + ${pk.w2} + ${pk.l1 + pk.l2} [K1] = ${perim} m`, ans: `${perim} m` },
+            { no: '1(b)', marks: '3 markah', steps: `Luas A = ${pk.l1} &times; ${pk.w1} = ${area1} m² [K1]<br/>Luas B = ${pk.l2} &times; ${pk.w2} = ${area2} m² [K1]<br/>Jumlah luas = ${area1} + ${area2} = ${totalArea} m²`, ans: `${totalArea} m²` },
+            { no: '1(c)', marks: '3 markah', steps: `Isi padu kuboid = Panjang &times; Lebar &times; Tinggi<br/>= ${pk.poolL} m &times; ${pk.poolW} m &times; ${pk.poolH} m [K2] = ${poolVol} m³`, ans: `${poolVol} m³` },
+            { no: '1(d)', marks: '3 markah', steps: `Jumlah kos = Perimeter &times; ${formatRM(pk.fenceRate)}<br/>= ${perim} m &times; ${formatRM(pk.fenceRate)} [K2] = ${formatRM(fenceCost)}`, ans: formatRM(fenceCost) }
+          ],
+          valid: perim > 0 && totalArea === area1 + area2 && poolVol > 0
+        };
+      }
+
+      // ========================================================================
+      // SOALAN 2 BAHAGIAN B [12 markah] — 3 Tema Berlainan
+      // ========================================================================
+      const b2Theme = pickNextPatternIndex('B2', 3, prefB2);
+      let b2 = null;
+
+      if (b2Theme === 0) {
+        const fac = randItem([
+          { maker: 'Pengeluar Sarung Tangan Bestari', objek: 'sarung tangan' },
+          { maker: 'Kilang Botol Kaca Utara', objek: 'botol kaca' },
+          { maker: 'Pengeluar Guli Kristal', objek: 'guli' }
+        ]);
+        const p = randItem([
+          { febDec: 1.435, macRatio: 1.25, janF: { n: 1, d: 4 }, threshold: 4.5, apMult: 4 },
+          { febDec: 1.385, macRatio: 1.5, janF: { n: 3, d: 10 }, threshold: 5.0, apMult: 4 }
+        ]);
+        const febW = Math.round(p.febDec * scale);
+        const macW = Math.round(p.macRatio * scale);
+        const macInt = Math.floor(macW / scale);
+        const macRem = macW % scale;
+        const macG = macRem === 0 ? 1 : gcd(macRem, scale);
+        const macNum = macRem === 0 ? 0 : macRem / macG;
+        const macDen = macRem === 0 ? 1 : scale / macG;
+
+        const janDiff = Math.round((p.janF.n / p.janF.d) * scale);
+        const janW = febW + janDiff;
+        const tot3 = janW + febW + macW;
+        const threshW = Math.round(p.threshold * scale);
+        const exceed = tot3 > threshW;
+        const janMacDiff = Math.abs(janW - macW);
+        const janMacDiffDec = formatDecimal(janMacDiff / scale);
+
+        const apW = macW * p.apMult;
+        const apInt = Math.floor(apW / scale);
+        const apRem = apW % scale;
+        const apG = apRem === 0 ? 1 : gcd(apRem, scale);
+        const apNum = apRem === 0 ? 0 : apRem / apG;
+        const apDen = apRem === 0 ? 1 : scale / apG;
+
+        b2 = {
+          themeName: 'Jadual Pengeluaran Bulanan & Penaakulan',
+          page8HTML: `
+            <div class="mt-3 text-[11.5pt]">
+              <div><strong>2.</strong> Jadual di bawah menunjukkan bilangan ${fac.objek} yang dihasilkan oleh ${fac.maker} pada bulan Februari dan Mac. Bilangan ${fac.objek} pada bulan Januari tidak ditunjukkan.</div>
+              <div class="mt-2 flex justify-center">
+                <table class="exam-table w-80">
+                  <thead><tr class="font-bold"><th>Bulan</th><th>Bilangan ${fac.objek}</th></tr></thead>
+                  <tbody>
+                    <tr><td>Januari</td><td></td></tr>
+                    <tr><td>Februari</td><td>${p.febDec} ${u}</td></tr>
+                    <tr><td>Mac</td><td>${formatWhole(macW)}</td></tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <div class="mt-3 pl-4">
+                <div class="flex justify-between items-start gap-3">
+                  <div class="space-y-3">
+                    <div>a) i. Nyatakan bilangan ${fac.objek} yang dihasilkan pada bulan Mac dalam pecahan ${u}.<div class="h-9"></div></div>
+                    <div>ii. Bilangan ${fac.objek} yang dihasilkan pada bulan Januari adalah ${fracHTML(p.janF.n, p.janF.d)} ${u} lebih daripada bulan Februari. Hitung jumlah ${fac.objek} pada bulan Januari. Nyatakan jawapan dalam nombor bulat.</div>
+                  </div>
+                  <div class="font-bold shrink-0">[3 markah]</div>
+                </div>
+                <div class="h-14"></div>
+                <div class="pl-6">Jawapan: <span class="dotted-line"></span></div>
+              </div>
+
+              <div class="mt-4 pl-4">
+                <div class="flex justify-between items-start gap-3">
+                  <div class="space-y-3">
+                    <div>b) i. Hitung jumlah ${fac.objek} yang dikeluarkan sepanjang tempoh tiga bulan tersebut.<div class="h-12"></div></div>
+                    <div>ii. Jumlah ${fac.objek} tersebut melebihi ${p.threshold} ${u}. Adakah pernyataan ini benar? Buktikan.</div>
+                  </div>
+                  <div class="font-bold shrink-0">[3 markah]</div>
+                </div>
+                <div class="h-14"></div>
+              </div>
+            </div>
+          `,
+          page9HTML: `
+            <div class="mt-5 pl-4 text-[11.5pt]">
+              <div class="mb-8">
+                <div class="flex justify-between items-start gap-3">
+                  <div>c) Hitung beza ${fac.objek} yang dikeluarkan pada bulan Januari dan Mac. Nyatakan jawapan dalam perpuluhan ${u}.</div>
+                  <div class="font-bold shrink-0">[3 markah]</div>
+                </div>
+                <div class="h-28"></div>
+                <div class="pl-6">Jawapan: <span class="dotted-line"></span> ${u}</div>
+              </div>
+
+              <div class="mb-6">
+                <div class="flex justify-between items-start gap-3">
+                  <div class="leading-relaxed">d) Sekiranya pada bulan April, bilangan ${fac.objek} meningkat ${p.apMult} kali ganda daripada bulan Mac, hitung jumlah ${fac.objek} yang dikeluarkan oleh ${fac.maker} pada bulan April. Nyatakan jawapan dalam pecahan ${u}.</div>
+                  <div class="font-bold shrink-0">[3 markah]</div>
+                </div>
+                <div class="h-28"></div>
+                <div class="pl-6">Jawapan: <span class="dotted-line"></span> ${u}</div>
+              </div>
+            </div>
+          `,
+          schemes: [
+            { no: '2(a)', marks: '3 markah', steps: `<strong>i.</strong> Mac = ${mixedFracHTML(macInt, macNum, macDen)} ${u} [N1]<br/><strong>ii.</strong> Januari = ${formatWhole(febW)} + ${formatWhole(janDiff)} [K1] = ${formatWhole(janW)} [N1]`, ans: `i. ${mixedFracHTML(macInt, macNum, macDen)} ${u} | ii. ${formatWhole(janW)}` },
+            { no: '2(b)', marks: '3 markah', steps: `<strong>i.</strong> Jumlah = ${formatWhole(janW)} + ${formatWhole(febW)} + ${formatWhole(macW)} [K1] = ${formatWhole(tot3)} [N1]<br/><strong>ii.</strong> <strong>${exceed ? 'Benar' : 'Tidak benar'}</strong> kerana ${formatWhole(tot3)} ${exceed ? 'melebihi' : 'kurang daripada'} ${formatWhole(threshW)} [N1].`, ans: `i. ${formatWhole(tot3)} | ii. ${exceed ? 'Benar' : 'Tidak benar'}` },
+            { no: '2(c)', marks: '3 markah', steps: `Beza = ${formatWhole(Math.max(janW, macW))} &minus; ${formatWhole(Math.min(janW, macW))} [K1] = ${formatWhole(janMacDiff)} [K1]<br/>Dalam perpuluhan ${u}: ${janMacDiffDec} ${u}`, ans: `${janMacDiffDec} ${u}` },
+            { no: '2(d)', marks: '3 markah', steps: `April = ${p.apMult} &times; ${formatWhole(macW)} [K1] = ${formatWhole(apW)} [K1]<br/>Dalam pecahan ${u}: ${mixedFracHTML(apInt, apNum, apDen)} ${u}`, ans: `${mixedFracHTML(apInt, apNum, apDen)} ${u}` }
+          ],
+          valid: janW + febW + macW === tot3
+        };
+      } else if (b2Theme === 1) {
+        const pk = randItem([
+          { totalStudents: 400, sainsPct: 35, mathPct: 30, bahasaPct: 15, robotikPct: 20, y6Pct: 25 },
+          { totalStudents: 600, sainsPct: 40, mathPct: 25, bahasaPct: 15, robotikPct: 20, y6Pct: 40 }
+        ]);
+        const robotikCount = (pk.totalStudents * pk.robotikPct) / 100;
+        const sainsCount = (pk.totalStudents * pk.sainsPct) / 100;
+        const bahasaCount = (pk.totalStudents * pk.bahasaPct) / 100;
+        const mathCount = (pk.totalStudents * pk.mathPct) / 100;
+        const diffMaxMin = sainsCount - bahasaCount;
+
+        const gR = gcd(robotikCount, sainsCount);
+        const ratioR = robotikCount / gR;
+        const ratioS = sainsCount / gR;
+
+        const y6MathCount = (mathCount * pk.y6Pct) / 100;
+        const halfMath = mathCount / 2;
+        const isMoreThanHalf = y6MathCount > halfMath;
+
+        const pieSVG = buildPieChartSVG([
+          { label: 'Kelab Sains', pct: pk.sainsPct, displayPct: `${pk.sainsPct}%`, fill: '#e2e8f0' },
+          { label: 'Kelab Matematik', pct: pk.mathPct, displayPct: `${pk.mathPct}%`, fill: '#cbd5e1' },
+          { label: 'Kelab Bahasa', pct: pk.bahasaPct, displayPct: `${pk.bahasaPct}%`, fill: '#f8fafc' },
+          { label: 'Kelab Robotik', pct: pk.robotikPct, displayPct: '?', fill: '#94a3b8' }
+        ]);
+
+        b2 = {
+          themeName: 'Pengurusan Data: Carta Pai (KSSR Tahun 6)',
+          page8HTML: `
+            <div class="mt-3 text-[11.5pt]">
+              <div><strong>2.</strong> Carta pai di bawah menunjukkan peratusan murid yang menyertai empat kelab kokurikulum di sebuah sekolah daripada jumlah keseluruhan <strong>${pk.totalStudents} orang murid</strong>.</div>
+              <div class="mt-2">${pieSVG}</div>
+
+              <div class="mt-3 pl-4">
+                <div class="flex justify-between items-start gap-3">
+                  <div>a) Hitung peratusan dan bilangan murid yang menyertai <strong>Kelab Robotik</strong>.</div>
+                  <div class="font-bold shrink-0">[3 markah]</div>
+                </div>
+                <div class="h-18"></div>
+                <div class="pl-6">Jawapan: <span class="dotted-line"></span> orang murid</div>
+              </div>
+
+              <div class="mt-4 pl-4">
+                <div class="flex justify-between items-start gap-3">
+                  <div>b) Hitung beza bilangan murid antara kelab yang mempunyai ahli paling ramai dengan kelab yang mempunyai ahli paling sedikit.</div>
+                  <div class="font-bold shrink-0">[3 markah]</div>
+                </div>
+                <div class="h-20"></div>
+                <div class="pl-6">Jawapan: <span class="dotted-line"></span> orang murid</div>
+              </div>
+            </div>
+          `,
+          page9HTML: `
+            <div class="mt-5 pl-4 text-[11.5pt]">
+              <div class="mb-8">
+                <div class="flex justify-between items-start gap-3">
+                  <div>c) Nyatakan nisbah bilangan murid <strong>Kelab Robotik</strong> kepada bilangan murid <strong>Kelab Sains</strong> dalam bentuk termudah.</div>
+                  <div class="font-bold shrink-0">[3 markah]</div>
+                </div>
+                <div class="h-28"></div>
+                <div class="pl-6">Jawapan: <span class="dotted-line"></span></div>
+              </div>
+
+              <div class="mb-6">
+                <div class="flex justify-between items-start gap-3">
+                  <div class="leading-relaxed">d) Seramai <strong>${pk.y6Pct}%</strong> daripada ahli Kelab Matematik ialah murid Tahun 6. Adakah bilangan murid Tahun 6 itu melebihi separuh daripada jumlah ahli Kelab Matematik? Buktikan dengan pengiraan.</div>
+                  <div class="font-bold shrink-0">[3 markah]</div>
+                </div>
+                <div class="h-28"></div>
+                <div class="pl-6">Jawapan: <span class="dotted-line"></span></div>
+              </div>
+            </div>
+          `,
+          schemes: [
+            { no: '2(a)', marks: '3 markah', steps: `Peratus Kelab Robotik = 100% &minus; (${pk.sainsPct}% + ${pk.mathPct}% + ${pk.bahasaPct}%) = ${pk.robotikPct}% [K1]<br/>Bilangan murid = ${pk.robotikPct}% &times; ${pk.totalStudents} [K1] = ${robotikCount} orang murid`, ans: `${pk.robotikPct}% (${robotikCount} orang)` },
+            { no: '2(b)', marks: '3 markah', steps: `Kelab Sains = ${pk.sainsPct}% &times; ${pk.totalStudents} = ${sainsCount} ; Kelab Bahasa = ${pk.bahasaPct}% &times; ${pk.totalStudents} = ${bahasaCount} [K1]<br/>Beza = ${sainsCount} &minus; ${bahasaCount} [K1] = ${diffMaxMin} orang murid`, ans: `${diffMaxMin} orang murid` },
+            { no: '2(c)', marks: '3 markah', steps: `Nisbah Robotik : Sains = ${robotikCount} : ${sainsCount} [K1]<br/>Permudahkan dengan ${gR}: = <strong>${ratioR} : ${ratioS}</strong> [K1]`, ans: `${ratioR} : ${ratioS}` },
+            { no: '2(d)', marks: '3 markah', steps: `Ahli Kelab Matematik = ${pk.mathPct}% &times; ${pk.totalStudents} = ${mathCount} orang (Separuh = ${halfMath} orang) [K1]<br/>Murid Tahun 6 = ${pk.y6Pct}% &times; ${mathCount} = ${y6MathCount} orang [K1]<br/><strong>${isMoreThanHalf ? 'Ya, melebihi separuh' : 'Tidak benar'}</strong> kerana ${y6MathCount} kurang daripada ${halfMath} [N1].`, ans: `${isMoreThanHalf ? 'Ya' : 'Tidak'} (${y6MathCount} orang)` }
+          ],
+          valid: pk.sainsPct + pk.mathPct + pk.bahasaPct + pk.robotikPct === 100
+        };
+      } else {
+        const pk = randItem([
+          { pqKm: 42.5, qrW: 32, qrN: 1, qrD: 2, petrolPer100: 8, pricePerL: 2.05, dep: '0745', arr: '1115', restMin: 30 },
+          { pqKm: 55.25, qrW: 44, qrN: 3, qrD: 4, petrolPer100: 10, pricePerL: 2.05, dep: '0815', arr: '1215', restMin: 40 }
+        ]);
+        const qrKm = pk.qrW + pk.qrN / pk.qrD;
+        const totOneWayKm = pk.pqKm + qrKm;
+        const roundTripKm = totOneWayKm * 2;
+        const petrolUsed = (roundTripKm / 100) * pk.petrolPer100;
+        const petrolCost = Math.round(petrolUsed * pk.pricePerL * 100) / 100;
+
+        const depH = parseInt(pk.dep.slice(0, 2), 10);
+        const depM = parseInt(pk.dep.slice(2), 10);
+        const arrH = parseInt(pk.arr.slice(0, 2), 10);
+        const arrM = parseInt(pk.arr.slice(2), 10);
+        const totalElapsedMin = (arrH * 60 + arrM) - (depH * 60 + depM);
+        const drivingMin = totalElapsedMin - pk.restMin;
+        const driveH = Math.floor(drivingMin / 60);
+        const driveM = drivingMin % 60;
+
+        b2 = {
+          themeName: 'Ukuran, Kadaran Bahan Api & Masa Perjalanan',
+          page8HTML: `
+            <div class="mt-3 text-[11.5pt]">
+              <div><strong>2.</strong> Jadual di bawah menunjukkan jarak perjalanan antara Bandar P, Bandar Q dan Bandar R.</div>
+              <div class="mt-2 flex justify-center">
+                <table class="exam-table w-80">
+                  <thead><tr class="font-bold"><th>Laluan</th><th>Jarak</th></tr></thead>
+                  <tbody>
+                    <tr><td>Bandar P ke Bandar Q</td><td>${pk.pqKm} km</td></tr>
+                    <tr><td>Bandar Q ke Bandar R</td><td>${mixedFracHTML(pk.qrW, pk.qrN, pk.qrD)} km</td></tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <div class="mt-3 pl-4">
+                <div class="flex justify-between items-start gap-3">
+                  <div>a) Hitung jumlah jarak, dalam <strong>km</strong>, perjalanan sehala dari Bandar P ke Bandar R melalui Bandar Q.</div>
+                  <div class="font-bold shrink-0">[3 markah]</div>
+                </div>
+                <div class="h-18"></div>
+                <div class="pl-6">Jawapan: <span class="dotted-line"></span> km</div>
+              </div>
+
+              <div class="mt-4 pl-4">
+                <div class="flex justify-between items-start gap-3">
+                  <div>b) Sebuah kereta memerlukan <strong>${pk.petrolPer100} ℓ</strong> petrol bagi setiap <strong>100 km</strong> perjalanan. Hitung isi padu petrol, dalam <strong>ℓ</strong>, yang diperlukan oleh kereta itu untuk perjalanan <strong>ulang-alik</strong> dari Bandar P ke Bandar R.</div>
+                  <div class="font-bold shrink-0">[3 markah]</div>
+                </div>
+                <div class="h-20"></div>
+                <div class="pl-6">Jawapan: <span class="dotted-line"></span> ℓ</div>
+              </div>
+            </div>
+          `,
+          page9HTML: `
+            <div class="mt-5 pl-4 text-[11.5pt]">
+              <div class="mb-8">
+                <div class="flex justify-between items-start gap-3">
+                  <div>c) Harga bagi seliter petrol ialah <strong>${formatRM(pk.pricePerL)}</strong>. Hitung jumlah kos petrol bagi perjalanan ulang-alik di 2(b).</div>
+                  <div class="font-bold shrink-0">[3 markah]</div>
+                </div>
+                <div class="h-28"></div>
+                <div class="pl-6">Jawapan: <span class="dotted-line"></span></div>
+              </div>
+
+              <div class="mb-6">
+                <div class="flex justify-between items-start gap-3">
+                  <div class="leading-relaxed">d) Encik Azlan memulakan perjalanan dari Bandar P pada <strong>Jam ${pk.dep}</strong> dan tiba di Bandar R pada <strong>Jam ${pk.arr}</strong>. Dalam perjalanan itu, beliau berhenti rehat selama <strong>${pk.restMin} minit</strong>. Hitung tempoh masa pemanduan sebenar Encik Azlan.</div>
+                  <div class="font-bold shrink-0">[3 markah]</div>
+                </div>
+                <div class="h-28"></div>
+                <div class="pl-6">Jawapan: <span class="dotted-line"></span></div>
+              </div>
+            </div>
+          `,
+          schemes: [
+            { no: '2(a)', marks: '3 markah', steps: `${mixedFracHTML(pk.qrW, pk.qrN, pk.qrD)} km = ${qrKm} km [K1]<br/>Jumlah jarak = ${pk.pqKm} km + ${qrKm} km [K1] = ${totOneWayKm} km`, ans: `${totOneWayKm} km` },
+            { no: '2(b)', marks: '3 markah', steps: `Jarak ulang-alik = 2 &times; ${totOneWayKm} km = ${roundTripKm} km [K1]<br/>Isi padu petrol = ${fracHTML(roundTripKm, 100)} &times; ${pk.petrolPer100} ℓ [K1] = ${petrolUsed} ℓ`, ans: `${petrolUsed} ℓ` },
+            { no: '2(c)', marks: '3 markah', steps: `Kos petrol = ${petrolUsed} ℓ &times; ${formatRM(pk.pricePerL)} [K2] = ${formatRM(petrolCost)}`, ans: formatRM(petrolCost) },
+            { no: '2(d)', marks: '3 markah', steps: `Jumlah tempoh = Jam ${pk.arr} &minus; Jam ${pk.dep} = ${Math.floor(totalElapsedMin / 60)} jam ${totalElapsedMin % 60} minit [K1]<br/>Tolak rehat ${pk.restMin} minit [K1] = ${driveH} jam ${driveM} minit`, ans: `${driveH} jam ${driveM} minit` }
+          ],
+          valid: totOneWayKm > 0 && petrolUsed > 0 && drivingMin > 0
+        };
+      }
+
+      return { b1, b2 };
+    }
+
+    /**
+     * ==========================================================================
+     * GABUNGAN PENJANAAN SET LENGKAP & KAWALAN KUALITI AUTOMATIK
+     * ==========================================================================
+     */
+    function generateFullExam(yearLevel, focusMode) {
+      const questionsA = buildBahagianA(yearLevel, focusMode);
+      const { b1, b2 } = buildBahagianB(yearLevel, focusMode);
+
+      const totalMarksA = questionsA.reduce((acc, q) => acc + q.marks, 0);
+      const totalMarksB = 24;
+      const allValid = questionsA.every(q => q.valid) && b1.valid && b2.valid && totalMarksA === 26;
+
+      return {
+        meta: {
+          yearLevel,
+          focusMode
+        },
+        questionsA,
+        b1,
+        b2,
+        qc: {
+          passed: allValid,
+          totalMarks: totalMarksA + totalMarksB,
+          partAMarks: totalMarksA,
+          partBMarks: totalMarksB
+        }
+      };
+    }
+
+    /**
+     * ==========================================================================
+     * PEMBINA HEADER, FOOTER & 9 HALAMAN KERTAS SOALAN A4
+     * ==========================================================================
+     */
+    function renderPageHeader(subjectTitle) {
+      return `
+        <div class="flex justify-between items-center text-[10.5pt] font-bold tracking-wide pb-1.5 border-b border-black">
+          <span>SULIT</span>
+          <span>${subjectTitle}</span>
+        </div>
+      `;
+    }
+
+    function renderPageFooter(pageNum, yearLevel, isLastPage = false) {
+      return `
+        <div class="pt-1.5 border-t border-black text-[9.5pt]">
+          <div class="flex justify-between items-end">
+            <div class="leading-tight font-bold">
+              <div>UJIAN PRESTASI</div>
+              <div>TAHUN ${yearLevel}</div>
+              <div class="mt-0.5">SULIT</div>
+            </div>
+            <div class="font-bold text-[11pt] self-center">
+              ${pageNum}
+            </div>
+            <div class="font-bold text-right">
+              ${isLastPage ? 'KERTAS SOALAN TAMAT' : 'LIHAT SEBELAH'}
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderQuestionBlockA(q, extraMarginClass = 'mb-5') {
+      return `
+        <div class="${extraMarginClass} text-[11.5pt]">
+          <div class="flex justify-between items-start gap-3">
+            <div class="flex-1">${q.bodyHTML}</div>
+            <div class="font-bold shrink-0">[${q.marks} markah]</div>
+          </div>
+          ${q.answerAreaHTML}
+        </div>
+      `;
+    }
+
+    function renderExamPaper(data) {
+      const { meta, questionsA: A, b1, b2 } = data;
+      const yr = meta.yearLevel;
+      const subj = 'MATEMATIK';
+
+      // HALAMAN 1: MUKA DEPAN RASMI GENERIK (TANPA LOGO/NAMA SEKOLAH & TAHUN TERTENTU)
+      const page1 = `
+        <section class="a4-sheet">
+          <div>
+            <div class="flex justify-between items-center text-[11pt] font-bold tracking-wider pb-2 border-b-2 border-black">
+              <span>SULIT</span>
+              <span>SULIT</span>
+            </div>
+          </div>
+
+          <div class="my-auto py-4 flex flex-col justify-between gap-7">
+            <div class="text-center border-y-2 border-black py-7 px-4">
+              <div class="text-[22pt] font-bold tracking-[0.14em] uppercase leading-tight">
+                UJIAN PRESTASI
+              </div>
+              <div class="w-40 h-[1.5px] bg-black mx-auto my-4"></div>
+              <div class="text-[26pt] font-bold tracking-[0.08em] uppercase leading-tight">
+                ${subj}
+              </div>
+              <div class="text-[20pt] font-bold tracking-[0.06em] uppercase mt-2">
+                TAHUN ${yr}
+              </div>
+              <div class="text-[14pt] font-bold mt-4 tracking-wide">
+                (1 JAM 15 MINIT)
+              </div>
+            </div>
+
+            <div class="border-[1.6px] border-black px-5 py-4 text-[12pt] font-bold space-y-3.5">
+              <div class="flex items-baseline gap-2">
+                <span class="w-20 shrink-0">Nama</span>
+                <span>:</span>
+                <span class="flex-1 border-b border-dotted border-black h-5"></span>
+              </div>
+              <div class="flex items-baseline gap-2">
+                <span class="w-20 shrink-0">Tahun</span>
+                <span>:</span>
+                <span class="flex-1 border-b border-dotted border-black h-5"></span>
+              </div>
+            </div>
+
+            <div class="border-[1.6px] border-black p-5">
+              <div class="text-center font-bold text-[12pt] tracking-wide underline mb-4">
+                JANGAN BUKA KERTAS SOALAN INI SEHINGGA DIBERITAHU
+              </div>
+              <ol class="list-decimal pl-6 space-y-2.5 text-[11.5pt] leading-relaxed">
+                <li>Jawab semua soalan.</li>
+                <li>Baca arahan di setiap bahagian dengan teliti.</li>
+                <li>
+                  Jika anda hendak menukar jawapan, padamkan jawapan yang telah dibuat. Kemudian tuliskan jawapan yang baharu.
+                </li>
+              </ol>
+            </div>
+
+            <div class="flex justify-end">
+              <table class="border-collapse border border-black text-[10pt] text-center w-64">
+                <thead>
+                  <tr class="font-bold bg-gray-100">
+                    <th class="border border-black py-1 px-2">Bahagian</th>
+                    <th class="border border-black py-1 px-2">Markah Penuh</th>
+                    <th class="border border-black py-1 px-2">Markah Diperoleh</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td class="border border-black py-1 px-2 font-bold">A</td>
+                    <td class="border border-black py-1 px-2">26</td>
+                    <td class="border border-black py-1 px-2"></td>
+                  </tr>
+                  <tr>
+                    <td class="border border-black py-1 px-2 font-bold">B</td>
+                    <td class="border border-black py-1 px-2">24</td>
+                    <td class="border border-black py-1 px-2"></td>
+                  </tr>
+                  <tr class="font-bold">
+                    <td class="border border-black py-1 px-2">JUMLAH</td>
+                    <td class="border border-black py-1 px-2">50</td>
+                    <td class="border border-black py-1 px-2"></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div>
+            <div class="text-center font-bold text-[10.5pt] tracking-wide mb-2">
+              KERTAS SOALAN INI MENGANDUNGI 9 HALAMAN BERCETAK TERMASUK KULIT.
+            </div>
+            <div class="text-right font-bold text-[10.5pt] mb-2">
+              (Lihat sebelah)
+            </div>
+            <div class="flex justify-between items-center text-[11pt] font-bold tracking-wider pt-2 border-t-2 border-black">
+              <span>SULIT</span>
+              <span>SULIT</span>
+            </div>
+          </div>
+        </section>
+      `;
+
+      // HALAMAN 2: BAHAGIAN A (SOALAN 1 - 4)
+      const page2 = `
+        <section class="a4-sheet">
+          <div>
+            ${renderPageHeader(subj)}
+            <div class="text-center mt-2 mb-2">
+              <div class="font-bold text-[13pt] underline">BAHAGIAN A</div>
+              <div class="font-bold text-[11.5pt]">[26 markah]</div>
+            </div>
+            <div class="font-bold text-[11pt] mb-3">Jawab semua soalan</div>
+            ${renderQuestionBlockA(A[0], 'mb-4')}
+            ${renderQuestionBlockA(A[1], 'mb-4')}
+            ${renderQuestionBlockA(A[2], 'mb-4')}
+            ${renderQuestionBlockA(A[3], 'mb-2')}
+          </div>
+          ${renderPageFooter(2, yr)}
+        </section>
+      `;
+
+      // HALAMAN 3: BAHAGIAN A (SOALAN 5 - 7)
+      const page3 = `
+        <section class="a4-sheet">
+          <div>
+            ${renderPageHeader(subj)}
+            <div class="mt-4">
+              ${renderQuestionBlockA(A[4], 'mb-6')}
+              ${renderQuestionBlockA(A[5], 'mb-6')}
+              ${renderQuestionBlockA(A[6], 'mb-3')}
+            </div>
+          </div>
+          ${renderPageFooter(3, yr)}
+        </section>
+      `;
+
+      // HALAMAN 4: BAHAGIAN A (SOALAN 8 - 10)
+      const page4 = `
+        <section class="a4-sheet">
+          <div>
+            ${renderPageHeader(subj)}
+            <div class="mt-4">
+              ${renderQuestionBlockA(A[7], 'mb-5')}
+              ${renderQuestionBlockA(A[8], 'mb-5')}
+              ${renderQuestionBlockA(A[9], 'mb-3')}
+            </div>
+          </div>
+          ${renderPageFooter(4, yr)}
+        </section>
+      `;
+
+      // HALAMAN 5: BAHAGIAN A (SOALAN 11 - 13)
+      const page5 = `
+        <section class="a4-sheet">
+          <div>
+            ${renderPageHeader(subj)}
+            <div class="mt-4">
+              ${renderQuestionBlockA(A[10], 'mb-6')}
+              ${renderQuestionBlockA(A[11], 'mb-6')}
+              ${renderQuestionBlockA(A[12], 'mb-3')}
+            </div>
+          </div>
+          ${renderPageFooter(5, yr)}
+        </section>
+      `;
+
+      // HALAMAN 6: BAHAGIAN B (SOALAN 1a & 1b)
+      const page6 = `
+        <section class="a4-sheet">
+          <div>
+            ${renderPageHeader(subj)}
+            <div class="text-center mt-2 mb-2">
+              <div class="font-bold text-[13pt] underline">BAHAGIAN B</div>
+              <div class="font-bold text-[11.5pt]">[24 markah]</div>
+            </div>
+            <div class="font-bold text-[11pt] mb-2">Jawab semua soalan</div>
+            ${b1.page6HTML}
+          </div>
+          ${renderPageFooter(6, yr)}
+        </section>
+      `;
+
+      // HALAMAN 7: BAHAGIAN B (SOALAN 1c & 1d)
+      const page7 = `
+        <section class="a4-sheet">
+          <div>
+            ${renderPageHeader(subj)}
+            ${b1.page7HTML}
+          </div>
+          ${renderPageFooter(7, yr)}
+        </section>
+      `;
+
+      // HALAMAN 8: BAHAGIAN B (SOALAN 2a & 2b)
+      const page8 = `
+        <section class="a4-sheet">
+          <div>
+            ${renderPageHeader(subj)}
+            ${b2.page8HTML}
+          </div>
+          ${renderPageFooter(8, yr)}
+        </section>
+      `;
+
+      // HALAMAN 9: BAHAGIAN B (SOALAN 2c & 2d + TAMAT)
+      const page9 = `
+        <section class="a4-sheet">
+          <div>
+            ${renderPageHeader(subj)}
+            ${b2.page9HTML}
+          </div>
+          <div>
+            <div class="text-center font-bold italic text-[11pt] mb-3">
+              Selamat menjawab
+            </div>
+            ${renderPageFooter(9, yr, true)}
+          </div>
+        </section>
+      `;
+
+      return page1 + page2 + page3 + page4 + page5 + page6 + page7 + page8 + page9;
+    }
+
+    /**
+     * ==========================================================================
+     * PEMBINA SKEMA JAWAPAN & LANGKAH PENGIRAAN LENGKAP DI AKHIR MUKA SURAT
+     * ==========================================================================
+     */
+    function renderAnswerScheme(data) {
+      const { meta, questionsA: A, b1, b2 } = data;
+      const yr = meta.yearLevel;
+
+      function renderSchemeRowsA(items) {
+        return items.map(q => `
+          <tr class="border-b border-black align-top">
+            <td class="border-r border-black p-1.5 font-bold text-center w-11">${q.no}</td>
+            <td class="border-r border-black p-1.5 leading-snug text-[9.5pt]">
+              <div class="text-[8.5pt] font-bold uppercase text-gray-600">[${q.topic}]</div>
+              ${q.steps}
+              ${q.note ? `<div class="text-[8.5pt] italic text-gray-700 mt-0.5">* ${q.note}</div>` : ''}
+            </td>
+            <td class="border-r border-black p-1.5 font-bold text-center w-40 text-[9.5pt] bg-gray-50">
+              ${q.ansHTML}
+            </td>
+            <td class="p-1.5 text-center font-bold w-16 text-[9.5pt]">[${q.marks}m]</td>
+          </tr>
+        `).join('');
+      }
+
+      function renderSchemeRowsB(items) {
+        return items.map(item => `
+          <tr class="border-b border-black align-top">
+            <td class="border-r border-black p-2 font-bold text-center w-14">${item.no}</td>
+            <td class="border-r border-black p-2 leading-relaxed text-[10.5pt]">
+              ${item.steps}
+            </td>
+            <td class="border-r border-black p-2 font-bold text-center w-44 text-[10.5pt] bg-gray-50">
+              ${item.ans}
+            </td>
+            <td class="p-2 text-center font-bold w-20 text-[10pt]">[${item.marks}]</td>
+          </tr>
+        `).join('');
+      }
+
+      return `
+        <!-- HALAMAN 10 (AKHIR MUKA SURAT - BAHAGIAN A): SKEMA JAWAPAN & LANGKAH PENGIRAAN -->
+        <section class="scheme-sheet">
+          <div>
+            <div class="flex justify-between items-center text-[10.5pt] font-bold pb-1.5 border-b-2 border-black">
+              <span>SULIT</span>
+              <span>SKEMA JAWAPAN &amp; LANGKAH PENGIRAAN • MATEMATIK TAHUN ${yr}</span>
+            </div>
+
+            <div class="text-center my-2">
+              <h2 class="text-[13pt] font-bold uppercase underline">SKEMA JAWAPAN DAN LANGKAH PENGIRAAN LENGKAP</h2>
+              <p class="text-[10pt] font-bold mt-0.5">BAHAGIAN A [26 MARKAH]</p>
+            </div>
+
+            <table class="w-full border-collapse border-[1.5px] border-black text-[9.5pt]">
+              <thead>
+                <tr class="bg-gray-200 font-bold border-b-[1.5px] border-black">
+                  <th class="border-r border-black py-1 px-1.5 w-11">No.</th>
+                  <th class="border-r border-black py-1 px-1.5 text-left">Langkah Pengiraan &amp; Kaedah Penyelesaian</th>
+                  <th class="border-r border-black py-1 px-1.5 w-40">Jawapan Akhir</th>
+                  <th class="py-1 px-1.5 w-16">Markah</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${renderSchemeRowsA(A)}
+              </tbody>
+            </table>
+          </div>
+
+          <div class="mt-2 flex justify-between text-[9.5pt] font-bold pt-1.5 border-t border-black">
+            <span>UJIAN PRESTASI • TAHUN ${yr}</span>
+            <span>10 (Skema Jawapan — Bahagian A)</span>
+            <span>SULIT</span>
+          </div>
+        </section>
+
+        <!-- HALAMAN 11 (AKHIR MUKA SURAT - BAHAGIAN B): SKEMA JAWAPAN & LANGKAH PENGIRAAN -->
+        <section class="scheme-sheet">
+          <div>
+            <div class="flex justify-between items-center text-[10.5pt] font-bold pb-1.5 border-b-2 border-black">
+              <span>SULIT</span>
+              <span>SKEMA JAWAPAN &amp; LANGKAH PENGIRAAN • MATEMATIK TAHUN ${yr}</span>
+            </div>
+
+            <div class="text-center my-3">
+              <h2 class="text-[13pt] font-bold uppercase underline">SKEMA JAWAPAN DAN LANGKAH PENGIRAAN LENGKAP</h2>
+              <p class="text-[10pt] font-bold mt-0.5">BAHAGIAN B [24 MARKAH]</p>
+            </div>
+
+            <div class="text-[10pt] font-bold mb-2">
+              Tema Soalan 1: ${b1.themeName} &nbsp;|&nbsp; Tema Soalan 2: ${b2.themeName}
+            </div>
+
+            <table class="w-full border-collapse border-[1.5px] border-black text-[10.5pt]">
+              <thead>
+                <tr class="bg-gray-200 font-bold border-b-[1.5px] border-black">
+                  <th class="border-r border-black py-1.5 px-2 w-14">No.</th>
+                  <th class="border-r border-black py-1.5 px-2 text-left">Langkah Pengiraan &amp; Kaedah Penyelesaian</th>
+                  <th class="border-r border-black py-1.5 px-2 w-44">Jawapan Akhir</th>
+                  <th class="py-1.5 px-2 w-20">Markah</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${renderSchemeRowsB([...b1.schemes, ...b2.schemes])}
+              </tbody>
+            </table>
+
+            <div class="mt-4 border border-black p-3 bg-gray-50 text-[10pt]">
+              <strong>Panduan Pemarkahan KSSR:</strong><br/>
+              <strong>[K1]</strong> = Markah kaedah / langkah pengiraan atau penukaran unit yang betul ditunjukkan.<br/>
+              <strong>[N1]</strong> = Markah nilai jawapan akhir yang tepat beserta unit yang dikehendaki soalan.
+            </div>
+          </div>
+
+          <div class="mt-4 flex justify-between text-[9.5pt] font-bold pt-1.5 border-t border-black">
+            <span>UJIAN PRESTASI • TAHUN ${yr}</span>
+            <span>11 (Skema Jawapan — Bahagian B)</span>
+            <span>SKEMA JAWAPAN TAMAT</span>
+          </div>
+        </section>
+      `;
+    }
+
+    /**
+     * ==========================================================================
+     * KAWALAN UI, NOTIFIKASI TOAST, SKALA RESPONSIF & EKSPORT PDF
+     * ==========================================================================
+     */
+    function showToast(message, type = 'info') {
+      const container = document.getElementById('toast-container');
+      const toast = document.createElement('div');
+      const colors = {
+        success: 'bg-emerald-900 border-emerald-500 text-emerald-100',
+        info: 'bg-slate-900 border-blue-500 text-white',
+        warning: 'bg-amber-900 border-amber-500 text-amber-100'
+      };
+      toast.className = `pointer-events-auto px-4 py-3 rounded-xl border shadow-2xl text-xs sm:text-sm font-medium flex items-center gap-2.5 transition-all duration-300 ${colors[type] || colors.info}`;
+      toast.innerHTML = `<span>${message}</span>`;
+      container.appendChild(toast);
+
+      setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transform = 'translateY(8px)';
+        setTimeout(() => toast.remove(), 300);
+      }, 3200);
+    }
+
+    function applyZoom(scale) {
+      AppState.zoomLevel = Math.max(0.45, Math.min(1.3, scale));
+      const wrapper = document.getElementById('paper-scale-wrapper');
+      const label = document.getElementById('zoom-label');
+      wrapper.style.transform = `scale(${AppState.zoomLevel})`;
+      label.textContent = `${Math.round(AppState.zoomLevel * 100)}%`;
+
+      const fullContainer = document.getElementById('full-document-container');
+      requestAnimationFrame(() => {
+        const naturalHeight = fullContainer.offsetHeight;
+        wrapper.style.height = `${naturalHeight * AppState.zoomLevel}px`;
+      });
+    }
+
+    function fitPaperToScreen() {
+      const viewportWidth = window.innerWidth - 24;
+      const a4PixelWidth = 794;
+      if (viewportWidth < a4PixelWidth) {
+        applyZoom(viewportWidth / a4PixelWidth);
+      } else {
+        applyZoom(1);
+      }
+    }
+
+    function generateAndRenderNewSet() {
+      AppState.year = parseInt(document.getElementById('select-year').value, 10);
+      AppState.subject = document.getElementById('select-subject').value;
+
+      let examSet = null;
+      let attempts = 0;
+
+      while (attempts < 10) {
+        attempts++;
+        const candidate = generateFullExam(AppState.year, AppState.subject);
+        if (candidate.qc.passed) {
+          examSet = candidate;
+          break;
+        }
+      }
+
+      AppState.currentExamData = examSet;
+      AppState.setCounter += 1;
+
+      document.getElementById('set-badge').textContent = `SET #${AppState.setCounter}`;
+      document.getElementById('qc-status-text').textContent =
+        `Kawalan Kualiti Lulus: ${examSet.qc.totalMarks}/${examSet.qc.totalMarks} Markah • Jawapan & Langkah Kerja di Akhir Muka Surat`;
+
+      document.getElementById('syllabus-info').textContent =
+        `Corak Bahagian B: [S1] ${examSet.b1.themeName} • [S2] ${examSet.b2.themeName}`;
+
+      document.getElementById('exam-paper-container').innerHTML = renderExamPaper(examSet);
+      document.getElementById('answer-scheme-container').innerHTML = renderAnswerScheme(examSet);
+
+      applyZoom(AppState.zoomLevel);
+      showToast(`Set Soalan Baharu #${AppState.setCounter} berjaya dijana lengkap dengan jawapan & langkah pengiraan di akhir muka surat!`, 'success');
+    }
+
+    /**
+     * Eksport Fail PDF (Lengkap 11 Halaman, Kertas Soalan 9 Halaman, atau Skema 2 Halaman)
+     */
+    async function exportPDF(targetType) {
+      const dropdown = document.getElementById('pdf-dropdown-menu');
+      dropdown.classList.add('hidden');
+
+      let sourceElement = null;
+      let filename = '';
+      let labelDesc = '';
+      const anchorEl = document.getElementById('scheme-anchor');
+
+      if (targetType === 'full') {
+        sourceElement = document.getElementById('full-document-container');
+        filename = `Lengkap_Soalan_dan_Jawapan_Matematik_Tahun_${AppState.year}_Set_${AppState.setCounter}.pdf`;
+        labelDesc = 'Lengkap (Soalan + Jawapan di Akhir)';
+      } else if (targetType === 'scheme') {
+        sourceElement = document.getElementById('answer-scheme-container');
+        filename = `Skema_Jawapan_Matematik_Tahun_${AppState.year}_Set_${AppState.setCounter}.pdf`;
+        labelDesc = 'Skema Jawapan Sahaja';
+      } else {
+        sourceElement = document.getElementById('exam-paper-container');
+        filename = `Kertas_Soalan_Matematik_Tahun_${AppState.year}_Set_${AppState.setCounter}.pdf`;
+        labelDesc = 'Kertas Soalan Sahaja (9 Halaman)';
+      }
+
+      const wrapper = document.getElementById('paper-scale-wrapper');
+      const prevTransform = wrapper.style.transform;
+      const prevHeight = wrapper.style.height;
+
+      try {
+        showToast(`Menjana PDF ${labelDesc}... Sila tunggu sebentar.`, 'info');
+
+        wrapper.style.transform = 'none';
+        wrapper.style.height = 'auto';
+        if (anchorEl) anchorEl.style.display = 'none';
+
+        const opt = {
+          margin: 0,
+          filename: filename,
+          image: { type: 'jpeg', quality: 0.98 },
+          html2canvas: {
+            scale: 2,
+            useCORS: true,
+            logging: false,
+            letterRendering: true
+          },
+          jsPDF: {
+            unit: 'mm',
+            format: 'a4',
+            orientation: 'portrait'
+          },
+          pagebreak: { mode: ['css', 'legacy'] }
+        };
+
+        if (typeof html2pdf !== 'undefined') {
+          await html2pdf().set(opt).from(sourceElement).save();
+          showToast(`Muat turun berjaya: ${filename}`, 'success');
+        } else {
+          window.print();
+        }
+      } catch (err) {
+        showToast('Membuka dialog cetakan sistem untuk simpan sebagai PDF A4.', 'warning');
+        window.print();
+      } finally {
+        if (anchorEl) anchorEl.style.display = '';
+        wrapper.style.transform = prevTransform;
+        wrapper.style.height = prevHeight;
+      }
+    }
+
+    /**
+     * ==========================================================================
+     * INISIALISASI PERISTIWA & PAPARAN AWAL
+     * ==========================================================================
+     */
+    window.addEventListener('DOMContentLoaded', () => {
+      generateAndRenderNewSet();
+      fitPaperToScreen();
+
+      document.getElementById('btn-generate').addEventListener('click', () => {
+        generateAndRenderNewSet();
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      });
+
+      document.getElementById('btn-new-set').addEventListener('click', () => {
+        generateAndRenderNewSet();
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      });
+
+      document.getElementById('select-year').addEventListener('change', () => {
+        generateAndRenderNewSet();
+      });
+
+      document.getElementById('select-subject').addEventListener('change', () => {
+        generateAndRenderNewSet();
+      });
+
+      // Butang Papar Skema Jawapan menatal terus ke bahagian jawapan di akhir muka surat
+      document.getElementById('btn-jump-scheme').addEventListener('click', () => {
+        const anchor = document.getElementById('scheme-anchor');
+        if (anchor) {
+          anchor.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      });
+
+      const pdfBtn = document.getElementById('btn-download-pdf');
+      const pdfMenu = document.getElementById('pdf-dropdown-menu');
+      pdfBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        pdfMenu.classList.toggle('hidden');
+      });
+
+      document.addEventListener('click', (e) => {
+        if (!document.getElementById('pdf-dropdown-container').contains(e.target)) {
+          pdfMenu.classList.add('hidden');
+        }
+      });
+
+      document.getElementById('dl-full-pdf').addEventListener('click', () => exportPDF('full'));
+      document.getElementById('dl-paper-pdf').addEventListener('click', () => exportPDF('paper'));
+      document.getElementById('dl-scheme-pdf').addEventListener('click', () => exportPDF('scheme'));
+
+      document.getElementById('btn-print').addEventListener('click', () => {
+        window.print();
+      });
+
+      document.getElementById('zoom-in').addEventListener('click', () => applyZoom(AppState.zoomLevel + 0.1));
+      document.getElementById('zoom-out').addEventListener('click', () => applyZoom(AppState.zoomLevel - 0.1));
+      document.getElementById('zoom-fit').addEventListener('click', () => fitPaperToScreen());
+      window.addEventListener('resize', () => {
+        if (window.innerWidth < 850) fitPaperToScreen();
+      });
+    });
+  </script>
+</body>
+</html>
